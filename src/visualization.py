@@ -1,47 +1,112 @@
 import pygame
+import colorsys
 from pedestrian_dataset import PedestrianDataset
+from predictor_base import Prediction
 import math
+import sys
+from typing import List, Tuple
 
+class Visualizer:
+    def __init__(self, res: tuple[int, int] = (800, 600), padding: int = 50, circle_size: int = 10):
+        self.res = res
+        self.padding = padding
+        self.circle_size = circle_size
 
-def visualize(scene: PedestrianDataset.Scene, res: tuple[int, int] = (800, 600), 
-              padding: int = 50, circle_size: int = 10):
-    pygame.init()
-    width, height = res
-    screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption(f"Scene {scene['id']} Trajectories Visualization")
-    clock = pygame.time.Clock()
+        pygame.init()
+        self.width, self.height = self.res
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.screen.fill((255, 255, 255))
+        pygame.display.flip()
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont(None, 20)
 
-    def draw_scene():
-        primary_pedestrian = scene['p']
-        min_x = min(track['x'] for track in scene['tracks'])
-        max_x = max(track['x'] for track in scene['tracks'])
-        min_y = min(track['y'] for track in scene['tracks'])
-        max_y = max(track['y'] for track in scene['tracks'])
-        prev_frame_id = None
+    @staticmethod
+    def generate_distinct_colors(num_colors: int) -> List[Tuple[int, int, int]]:
+        """Generate a list of visually distinct RGB colors."""
+        colors = []
+        for i in range(num_colors):
+            # Use colorsys to get distinct hues evenly spaced in the color wheel
+            hue = i / num_colors  # even spacing on the hue spectrum
+            saturation = 0.9  # high saturation for vivid colors
+            brightness = 0.9  # high brightness for better contrast
 
-        for track in scene['tracks']:
-            cur_frame_id = track['f']
+            # Convert HSV to RGB
+            rgb = colorsys.hsv_to_rgb(hue, saturation, brightness)
+            # Convert float RGB (0.0 - 1.0) to integer (0 - 255)
+            rgb = tuple(int(c * 255) for c in rgb)
+            colors.append(rgb)
+        return colors
 
-            if cur_frame_id != prev_frame_id:
+    @staticmethod
+    def norm(pos: PedestrianDataset.Pos, min_x: float, max_x: float, min_y: float, max_y: float) -> PedestrianDataset.Pos:
+        normed = PedestrianDataset.Pos(x=-1, y=-1)
+        for coord, (min_val, max_val) in [('x', (min_x, max_x)), ('y', (min_y, max_y))]:
+            # value between 0-1
+            normed[coord] = (pos[coord] - min_val) / (max_val - min_val)
+        return normed
+
+    def align_pos(self, normed_pos: PedestrianDataset.Pos) -> PedestrianDataset.Pos:
+        pos_x = round(normed_pos['x'] * (self.width - 2 * self.padding) + self.padding)
+        pos_y = round(normed_pos['y'] * (self.height - 2 * self.padding) + self.padding)
+        return PedestrianDataset.Pos(x=pos_x, y=pos_y)
+    
+    def draw_scene(self, scene: PedestrianDataset.Scene, predictions: List[Prediction] = None):
+        pygame.display.set_caption(f"Scene {scene['id']} Trajectories Visualization")
+        min_x = min(track['x'] for track in scene['positions'].values())
+        max_x = max(track['x'] for track in scene['positions'].values())
+        min_y = min(track['y'] for track in scene['positions'].values())
+        max_y = max(track['y'] for track in scene['positions'].values())
+
+        num_persons = len(scene['pedestrian_ids'])
+        colors_list = self.generate_distinct_colors(num_persons)
+        colors = {pid: colors_list[idx] for idx, pid in enumerate(scene['pedestrian_ids'])}
+
+        prev_frame_id = next(iter(scene['positions']))[0]
+        for pos_id, pos in scene['positions'].items():
+            frame_id, person_id = pos_id
+            cur_color = colors[person_id]
+
+            if frame_id != prev_frame_id:
                 pygame.display.flip()
-                clock.tick(int(scene['fps']))
-                screen.fill((255, 255, 255))
-                prev_frame_id = cur_frame_id
+                self.clock.tick(int(scene['fps']))
+                self.screen.fill((255, 255, 255))
+                prev_frame_id = frame_id
 
-            normed_x = (track['x'] - min_x) / (max_x - min_x) # x between 0-1
-            normed_y = (track['y'] - min_y) / (max_y - min_y) # y between 0-1
-            pos_x = round(normed_x * (width - 2 * padding) + padding)
-            pos_y = round(normed_y * (height - 2 * padding) + padding)
+            # draw current position
+            normed_cur_pos = self.norm(pos, min_x, max_x, min_y, max_y)
+            aligned_cur_pos = self.align_pos(normed_cur_pos)
+            pygame.draw.circle(self.screen, cur_color, (aligned_cur_pos['x'], aligned_cur_pos['y']), self.circle_size)
+
+            # draw the person_id in the middle of the circle
+            text_surface = self.font.render(str(person_id), True, (0, 0, 0))  # Black text
+            text_rect = text_surface.get_rect(center=(aligned_cur_pos['x'], aligned_cur_pos['y']))
+            self.screen.blit(text_surface, text_rect)
             
-            color = (255, 0, 0) if track['p'] == primary_pedestrian else (0, 0, 255)
-            pygame.draw.circle(screen, color, (pos_x, pos_y), circle_size)
+            # draw the goal position
+            last_frame_id = scene['end_frames'][person_id]
+            last_pos_id = (last_frame_id, person_id)
+            last_pos = scene['positions'][last_pos_id]
+            normed_last_pos = self.norm(last_pos, min_x, max_x, min_y, max_y)
+            aligned_last_pos = self.align_pos(normed_last_pos)
+            pygame.draw.rect(
+                self.screen, cur_color, 
+                pygame.Rect(
+                    aligned_last_pos['x'] - self.circle_size, aligned_last_pos['y'] - self.circle_size,
+                    self.circle_size * 2, self.circle_size * 2
+                )
+            )
 
-            # Handle Pygame events
-            # for event in pygame.event.get():
-            #     if event.type == pygame.QUIT:
-            #         pygame.quit()
-            #         sys.exit()
+            # draw the person_id in the middle of the rectangle
+            text_surface = self.font.render(str(person_id), True, (0, 0, 0))  # Black text
+            text_rect = text_surface.get_rect(center=(aligned_last_pos['x'], aligned_last_pos['y']))
+            self.screen.blit(text_surface, text_rect)
 
-    draw_scene()
+            # handle Pygame events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
 
-    pygame.quit()
+    def visualize(self, scene: PedestrianDataset.Scene, predictions: List[Prediction] = None):
+        self.draw_scene(scene, predictions)
+        pygame.quit()
