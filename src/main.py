@@ -1,38 +1,32 @@
 from pedestrian_dataset import PedestrianDataset
-from social_force import SocialForcePredictor
+from social_force_predictor import SocialForcePredictor
 from visualization import Visualizer
 import argparse
 import random
 
 def main(dataset: PedestrianDataset):
-    print(f"scene_id: {dataset.train[0]['id']}")
-    print(f"pedestrian_id: {dataset.train[0]['p']}")
-    print(f"starting_frame: {dataset.train[0]['s']}")
-    print(f"ending_frame: {dataset.train[0]['e']}")
-    print(f"fps: {dataset.train[0]['fps']}")
-    print(f"tag: {dataset.train[0]['tag']}")
-    print(f"s_track_id: {dataset.train[0]['s_track_id']}")
-    print(f"e_track_id: {dataset.train[0]['e_track_id']}")
-    print(f"records:")
-    for track in dataset.train[0]['records']:
-        print(track)
+    train_scenes = dataset.train._scenes
+    selected_scenes = random.sample(train_scenes, 5)
+    social_force = SocialForcePredictor()
 
-    from visualization import visualize
-    # visualize(dataset.train[0], res=(800, 600))
+    for scene in selected_scenes:
+        prediction = social_force.predict(scene)
 
+        vis = Visualizer(res=(1200, 1000))
+        vis.visualize(scene, prediction)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pedestrian Model.")
-    parser.add_argument("--data_path", type=str, 
-                        default="./data_trajnet++/train/real_data/biwi_hotel.ndjson", 
+    parser = argparse.ArgumentParser(description="Pedestrian Dataset Module.")
+    parser.add_argument("--path", type=str, 
+                        default="./data_trajnet++/test/synth_data/orca_synth.ndjson", 
                         help="Path to a ndjson dataset following the trajnet++ format.")
-    parser.add_argument("--res", type=int, nargs=2, default=[800, 600], help="Resolution as width height.")
+    parser.add_argument("--cache", type=lambda x: (str(x).lower() == 'true'), default=True, help="Cache dataset after processing (True/False).")
     parser.add_argument("--tr_te_split", type=float, default=0.8, help="Train-test split ratio.") 
     parser.add_argument("--seed", type=int, default=31, help="Random seed.") 
-
+    
     args = parser.parse_args()
     random.seed(args.seed)
 
-    dataset = PedestrianDataset(args.data_path, args.train_test_split)
-    visualizer = Visualizer(args.res)
-    main(dataset, visualizer)
+    dataset = PedestrianDataset(args.path, args.tr_te_split, args.cache)
+
+    main(dataset)

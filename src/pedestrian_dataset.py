@@ -62,7 +62,13 @@ class PedestrianDataset:
         def transform(self, transform: Callable[..., Any]) -> "PedestrianDataset.TransformedDataset":
             return PedestrianDataset.TransformedDataset(self, transform)
 
-    def __init__(self, path: str, train_test_split: float, cache_path: Optional[str] = None):
+    def __init__(self, path: str, train_test_split: float, cache: bool):
+        cache_path = None
+        if cache:
+            # Insert "_preprocessed_cache" before ".ndjson"
+            base, ext = os.path.splitext(path)
+            cache_path = f"{base}_preprocessed_cache{ext}"
+
         if cache_path and os.path.exists(cache_path):
             print(f"Loading cached dataset from {cache_path}...")
             with open(cache_path, 'rb') as cache_file:
@@ -98,7 +104,7 @@ class PedestrianDataset:
         test_data = [data[i] for i in test_data_indices]
         
         return train_data, test_data
-
+        
     @staticmethod
     def _load_ndjson_data(path: str) -> List["PedestrianDataset.Scene"]:
         scenes: "PedestrianDataset.Scene" = []
@@ -107,7 +113,7 @@ class PedestrianDataset:
 
         with open(path, 'r') as file:
             print('Loading...')
-            for line in tqdm(file, total=total_lines, unit="line", unit_scale=True):
+            for line in tqdm(file, total=total_lines, unit="line", unit_scale=True, mininterval=1.0):
                 data = json.loads(line)
                 # scenes go first in trajnet++ format
                 if 'scene' in data:
@@ -123,10 +129,13 @@ class PedestrianDataset:
                     scenes.append(scene_with_track)
                 elif 'track' in data:
                     track = data['track']
+                    track_f = track['f']
+                    track_p = track['p']
                     for scene in scenes:
-                        if scene['s'] <= track['f'] <= scene['e']:
+                        scene_s, scene_e = scene['s'], scene['e']
+                        if scene_s <= track_f <= scene_e:
                             pos = PedestrianDataset.Pos(x=track['x'], y=track['y'])
-                            pos_id = (track['f'], track['p']) 
+                            pos_id = (track_f, track_p)
                             scene['positions'][pos_id] = pos
 
         for scene in scenes:
@@ -146,8 +155,8 @@ class PedestrianDataset:
 
         return scenes
 
-def main(path: str, train_test_split: float, cache_path: str):
-    dataset = PedestrianDataset(path, train_test_split, cache_path)
+def main(path: str, train_test_split: float, cache: bool):
+    dataset = PedestrianDataset(path, train_test_split, cache)
     from visualization import Visualizer
 
     train_scenes = dataset.train._scenes
@@ -184,8 +193,7 @@ def main(path: str, train_test_split: float, cache_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pedestrian Dataset Module.")
     parser.add_argument("--path", type=str, 
-                        # default="./data_trajnet++/train/real_data/biwi_hotel.ndjson", 
-                        default="./data_trajnet++/train/synth_data/orca_synth.ndjson", 
+                        default="./data_trajnet++/test/synth_data/orca_synth.ndjson", 
                         help="Path to a ndjson dataset following the trajnet++ format.")
     parser.add_argument("--cache", type=lambda x: (str(x).lower() == 'true'), default=True, help="Use cache if available (True/False).")
     parser.add_argument("--tr_te_split", type=float, default=0.8, help="Train-test split ratio.") 
@@ -194,10 +202,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     random.seed(args.seed)
 
-    cache_path = None
-    if args.cache:
-        # Insert "_preprocessed_cache" before ".ndjson"
-        base, ext = os.path.splitext(args.path)
-        cache_path = f"{base}_preprocessed_cache{ext}"
-
-    main(args.path, args.tr_te_split, cache_path)
+    main(args.path, args.tr_te_split, args.cache)
