@@ -6,14 +6,14 @@ import random
 
 def main(dataset: PedestrianDataset):
     train_scenes = dataset.train._scenes
-    selected_scenes = random.sample(train_scenes, 5)
+    selected_scenes = random.sample(train_scenes, 3)
     social_force = SocialForcePredictor()
 
     for scene in selected_scenes:
         prediction = social_force.predict(scene)
 
-        vis = Visualizer(res=(1200, 1000))
-        vis.visualize(scene, prediction)
+        vis = Visualizer()
+        vis.visualize(scene, time_scale=1.0, prediction=prediction)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pedestrian Dataset Module.")

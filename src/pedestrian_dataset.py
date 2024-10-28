@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
-from typing import Any, Callable, TypedDict, Optional, Tuple, List, Dict, NewType
+from typing import Any, Callable, TypedDict, Tuple, List, Dict
 import json
 import torch
-import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import random
 from tqdm import tqdm
 import os
 import pickle
+from vector2d import Position
 
 class PedestrianDataset:
 
-    FrameNumber = NewType('FrameNumber', int)
-    PedestrianId = NewType('PedestrianId', int)
-    PosId = Tuple["PedestrianDataset.FrameNumber", "PedestrianDataset.PedestrianId"]
-
-    class Pos(TypedDict):
-        x: float
-        y: float
+    PositionId = Tuple[int, int]  # (frame_id, person_id)
 
     class Scene(TypedDict):
         id: int
         p: int
         s: int
         e: int
-        positions: Dict["PedestrianDataset.PosId", "PedestrianDataset.Pos"]
-        start_frames: Dict["PedestrianDataset.PedestrianId", "PedestrianDataset.FrameNumber"]
-        end_frames: Dict["PedestrianDataset.PedestrianId", "PedestrianDataset.FrameNumber"]
-        frame_numbers: List["PedestrianDataset.FrameNumber"]
-        pedestrian_ids: List["PedestrianDataset.PedestrianId"]
+        positions: Dict["PedestrianDataset.PositionId", Position]
+        start_frames: Dict[int, int]  # person_id -> frame_id
+        end_frames: Dict[int, int]  # person_id -> frame_id
+        frame_ids: List[int]
+        person_ids: List[int]
+        min_position: Position
+        max_position: Position
         fps: float
         tag: int
 
@@ -67,7 +62,7 @@ class PedestrianDataset:
         if cache:
             # Insert "_preprocessed_cache" before ".ndjson"
             base, ext = os.path.splitext(path)
-            cache_path = f"{base}_preprocessed_cache{ext}"
+            cache_path = f"{base}_preprocessed_cache{ext}.pkl"
 
         if cache_path and os.path.exists(cache_path):
             print(f"Loading cached dataset from {cache_path}...")
@@ -123,8 +118,10 @@ class PedestrianDataset:
                         "positions": {},
                         "start_frames": {},
                         "end_frames": {},
-                        "frame_numbers": [],
-                        "pedestrian_ids": []
+                        "frame_ids": [],
+                        "person_ids": [],
+                        "min_position": Position(x=float("inf"), y=float("inf")),
+                        "max_position": Position(x=float("-inf"), y=float("-inf"))
                     }
                     scenes.append(scene_with_track)
                 elif 'track' in data:
@@ -134,17 +131,21 @@ class PedestrianDataset:
                     for scene in scenes:
                         scene_s, scene_e = scene['s'], scene['e']
                         if scene_s <= track_f <= scene_e:
-                            pos = PedestrianDataset.Pos(x=track['x'], y=track['y'])
+                            pos = Position(x=track['x'], y=track['y'])
                             pos_id = (track_f, track_p)
                             scene['positions'][pos_id] = pos
+                            scene['min_position'] = Position(x=min(scene['min_position'].x, pos.x), 
+                                                             y=min(scene['min_position'].y, pos.y))
+                            scene['max_position'] = Position(x=max(scene['max_position'].x, pos.x), 
+                                                             y=max(scene['max_position'].y, pos.y))
 
         for scene in scenes:
             scene['positions'] = dict(sorted(scene['positions'].items(), key=lambda item: (item[0][0], item[0][1])))
 
-            scene['frame_numbers'] = sorted(set(frame for frame, _ in scene['positions'].keys()))
-            scene['pedestrian_ids'] = sorted(set(ped_id for _, ped_id in scene['positions'].keys()))
+            scene['frame_ids'] = sorted(set(frame for frame, _ in scene['positions'].keys()))
+            scene['person_ids'] = sorted(set(ped_id for _, ped_id in scene['positions'].keys()))
 
-            for p in scene['pedestrian_ids']:
+            for p in scene['person_ids']:
                 frames_for_pedestrian = [frame for frame, ped_id in scene['positions'].keys() if ped_id == p]
 
                 min_frame_id = min(frames_for_pedestrian)
@@ -157,37 +158,38 @@ class PedestrianDataset:
 
 def main(path: str, train_test_split: float, cache: bool):
     dataset = PedestrianDataset(path, train_test_split, cache)
-    from visualization import Visualizer
 
     train_scenes = dataset.train._scenes
-    selected_scenes = random.sample(train_scenes, 5)
+    selected_scenes = random.sample(train_scenes, 3)
 
     for scene in selected_scenes:
         print(f"Scene ID: {scene['id']}")
-        print(f"Pedestrian ID: {scene['p']}")
+        print(f"Person ID: {scene['p']}")
         print(f"Starting frame: {scene['s']}")
         print(f"Ending frame: {scene['e']}")
+        print(f"Min. position: {scene['min_position']}")
+        print(f"Max. position: {scene['max_position']}")
         print(f"FPS: {scene['fps']}")
         print(f"Tag: {scene['tag']}")
         
-        print("Start frames for each pedestrian:")
-        for ped_id, start_frame in scene['start_frames'].items():
-            print(f"Pedestrian {ped_id}: Start frame {start_frame}")
+        print("Start frames for each person:")
+        for per_id, start_frame in scene['start_frames'].items():
+            print(f"Person {per_id}: Start frame {start_frame}")
         
         print("End frames for each pedestrian:")
-        for ped_id, end_frame in scene['end_frames'].items():
-            print(f"Pedestrian {ped_id}: End frame {end_frame}")
+        for per_id, end_frame in scene['end_frames'].items():
+            print(f"Person {per_id}: End frame {end_frame}")
         
-        print(f"Frame numbers: {scene['frame_numbers']}")
-        print(f"Pedestrian IDs: {scene['pedestrian_ids']}")
+        print(f"Frame ids: {scene['frame_ids']}")
+        print(f"Person IDs: {scene['person_ids']}")
 
         print("Positions (records):")
         for pos_id, pos in scene['positions'].items():
-            frame, pedestrian = pos_id
-            print(f"Frame {frame}, Pedestrian {pedestrian}: Position (x={pos['x']}, y={pos['y']})")
+            frame_id, person_id = pos_id
+            print(f"Frame {frame_id}, Person {person_id}: Position (x={pos.x}, y={pos.y})")
 
-        # Visualize the scene
-        vis = Visualizer(res=(800, 600))
+        from visualization import Visualizer
+        vis = Visualizer()
         vis.visualize(scene)
 
 if __name__ == "__main__":

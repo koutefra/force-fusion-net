@@ -1,18 +1,11 @@
 from typing import List, Tuple, TypedDict, Dict
 from abc import ABC, abstractmethod
 from pedestrian_dataset import PedestrianDataset
-
-class Velocity(TypedDict):
-    vx: float
-    vy: float
-
-class Force(TypedDict):
-    fx: float
-    fy: float
+from vector2d import Velocity, Force
 
 class Prediction(TypedDict):
     scene_id: int 
-    preds: Dict[PedestrianDataset.PosId, Tuple[Velocity, Force]]
+    preds: Dict[PedestrianDataset.PositionId, Tuple[Velocity, Force]]
 
 class PredictorBase(ABC):
     @abstractmethod
