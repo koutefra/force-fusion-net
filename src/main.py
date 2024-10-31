@@ -1,5 +1,5 @@
-from data.pedestrian_dataset import PedestrianDataset
-from models.social_force_predictor import SocialForcePredictor
+from data.dataset import PedestrianDataset
+from models.social_force_model import SocialForcePredictor
 from ground_truth_predictor import GroundTruthPredictor
 from visualization import Visualizer
 import argparse

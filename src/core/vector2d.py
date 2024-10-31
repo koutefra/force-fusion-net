@@ -37,6 +37,9 @@ class Point2D:
     def dot(self, other: "Point2D") -> float:
         return self.x * other.x + self.y * other.y
 
+    def direction_to(self, other: "Point2D") -> "Point2D":
+        return (other - self).normalize()
+
     def angle(self) -> float:
         return math.atan2(self.y, self.x)
 
@@ -49,6 +52,11 @@ class Point2D:
     @staticmethod
     def zero() -> "Point2D":
         return Point2D(0.0, 0.0)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Point2D):
+            return False
+        return math.isclose(self.x, other.x) and math.isclose(self.y, other.y)
 
 @dataclass(frozen=True)
 class Velocity(Point2D):
