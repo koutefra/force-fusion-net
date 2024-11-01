@@ -1,8 +1,10 @@
 from typing import List, Tuple, Any, Dict
 from core.scene import Scene
+from core.scene_datapoint import SceneDatapoints
 from data.base_loader import BaseLoader 
 from data.feature_extractor import SceneFeatureExtractor
 from sklearn.model_selection import train_test_split
+from torch.utils.data import TensorDataset, DataLoader
 
 class Dataset:
     scenes: Dict[int, Scene]
@@ -18,10 +20,18 @@ class Dataset:
         instance.feature_extractor = feature_extractor
         return instance
 
-    def to_datapoints(self) -> List[Tuple[Dict[str, float], Dict[str, float]]]:
-        return [self.feature_extractor.scene_to_datapoints(scene) for scene in self.scenes.values()]
+    def to_torch_dataset(self) -> None:
+        datapoints: Dict[int, SceneDatapoints] = self.to_datapoints()
+        torch_dataset = TensorDataset(...)
+        return torch_dataset 
 
-    def scene_to_datapoints(self, scene_id: int) -> List[Tuple[Dict[str, float], Dict[str, float]]]:
+    def to_datapoints(self) -> Dict[int, SceneDatapoints]:
+        datapoints = {}
+        for scene_id, scene in self.scenes.items():
+            datapoints[scene_id] = self.feature_extractor(scene)
+        return datapoints
+
+    def scene_to_datapoints(self, scene_id: int) -> SceneDatapoints:
         if scene_id not in self.scenes:
             raise KeyError(f"Scene ID {scene_id} not found in dataset.")
         return self.feature_extractor.scene_to_datapoints(self.scenes[scene_id])
