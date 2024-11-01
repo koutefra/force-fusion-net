@@ -3,16 +3,16 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from typing import Tuple, Dict, List
-from trainable_module import TrainableModule
+from models.trainable_module import TrainableModule
 
 class NeuralNetModel(TrainableModule):
-    def __init__(self, general_features_dim: int, interaction_features_dim: int, interaction_output_size: int,
+    def __init__(self, person_features_dim: int, interaction_features_dim: int, interaction_output_size: int,
                  hidden_sizes: List[int], output_size: int):
         super(NeuralNetModel, self).__init__()
         self.fc_interaction = nn.Linear(interaction_features_dim, interaction_output_size)
 
         self.fcs_main = nn.ModuleList()
-        layer_input_size = general_features_dim + interaction_output_size
+        layer_input_size = person_features_dim + interaction_output_size
         for h_size in hidden_sizes:
             self.fcs_main.append(nn.Linear(layer_input_size, h_size))
             layer_input_size = h_size

@@ -44,7 +44,7 @@ class TrajnetLoader(BaseLoader):
                 
                 elif 'track' in data:
                     track_data = data['track']
-                    tracks.append(TrajnetLoader.TrajnetPlusPlusTrack(
+                    tracks.append(TrajnetLoader.TrajnetTrack(
                         f=track_data['f'],
                         p=track_data['p'],
                         x=track_data['x'],
@@ -106,7 +106,7 @@ class TrajnetLoader(BaseLoader):
             
         # create Scene instances using from_raw_data
         final_scenes = {
-            scene_data.id: Scene.from_raw_data(scene_data)
+            scene_data['id']: Scene.from_raw_data(scene_data)
             for scene_data in scenes_data.values()
         }
         return final_scenes

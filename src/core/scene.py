@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Callable
 from core.vector2d import Point2D, Velocity, Acceleration
+from functools import cached_property
 
 @dataclass(frozen=True)
 class Scene:
@@ -26,7 +27,7 @@ class Scene:
             dataset=raw_data["dataset"]
         )
 
-    @property
+    @cached_property
     def min_max_points(self) -> Tuple[Point2D, Point2D]:
         min_x, min_y = float("inf"), float("inf")
         max_x, max_y = float("-inf"), float("-inf")
@@ -38,7 +39,7 @@ class Scene:
         
         return Point2D(x=min_x, y=min_y), Point2D(x=max_x, y=max_y)
 
-    @property
+    @cached_property
     def sorted_frame_ids(self) -> List[int]:
         return sorted(set(frame_id for frame_id in self.trajectories.keys()))
 
@@ -54,7 +55,7 @@ class Scene:
     def persons_ids_in_frame(self, frame_id) -> List[int]:
         return list(self.trajectories.get(frame_id, {}).keys())
 
-    @property
+    @cached_property
     def person_frame_ranges(self) -> Tuple[Dict[int, int], Dict[int, int]]:
         start_frames = {}
         end_frames = {}
@@ -66,42 +67,39 @@ class Scene:
 
         return start_frames, end_frames
 
-    def _central_difference(self, attr: str, zero_method: Callable, calc_method: Callable) -> Dict[int, Dict[int, Point2D]]:
+    def _central_difference(self, attr: str, calc_method: Callable) -> Dict[int, Dict[int, Point2D]]:
         differences = {}
-        frame_ids = self.sorted_frame_ids
-        for level in range(len(frame_ids)):
+        data = getattr(self, attr)
+        frame_ids = list(data.keys())
+        for level in range(1, len(frame_ids) - 1):
             frame_id = frame_ids[level]
-            differences[frame_id] = {}
-            
-            if level == 0 or level == len(frame_ids) - 1:
-                # Set to zero for boundary frames
-                for person_id in getattr(self, attr)[frame_id].keys():
-                    differences[frame_id][person_id] = zero_method()
-                continue
-
             prev_frame_id = frame_ids[level - 1]
             next_frame_id = frame_ids[level + 1]
-            delta_time = (next_frame_id - prev_frame_id) / self.fps
 
-            for person_id, current in getattr(self, attr)[frame_id].items():
-                prev = getattr(self, attr)[prev_frame_id][person_id]
-                next_ = getattr(self, attr)[next_frame_id][person_id]
-                difference = calc_method(prev, next_, delta_time)
+            delta_time = (next_frame_id - prev_frame_id) / self.fps
+            differences[frame_id] = {}
+
+            person_ids = set(data[prev_frame_id].keys()) & \
+                        set(data[frame_id].keys()) & \
+                        set(data[next_frame_id].keys())
+
+            for person_id in person_ids:
+                prev = data[prev_frame_id][person_id]
+                next = data[next_frame_id][person_id]
+                difference = calc_method(prev, next, delta_time)
                 differences[frame_id][person_id] = difference
         return differences
 
-    @property
+    @cached_property
     def velocities_central_difference(self) -> Dict[int, Dict[int, Velocity]]:
         return self._central_difference(
             attr="trajectories",
-            zero_method=Velocity.zero,
             calc_method=Velocity.from_points
         )
 
-    @property
+    @cached_property
     def accelerations_central_difference(self) -> Dict[int, Dict[int, Acceleration]]:
         return self._central_difference(
             attr="velocities_central_difference",
-            zero_method=Acceleration.zero,
             calc_method=Acceleration.from_velocities
         )

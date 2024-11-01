@@ -50,47 +50,46 @@ class SceneFeatureExtractor:
             "direction_y_to_goal": direction_to_goal.y
         }
 
+    def position_to_datapoint(self, scene: Scene, frame_id: int, person_id: int) -> SceneDatapoint:
+        frame_positions = scene.trajectories[frame_id]
+        frame_obstacles = scene.obstacles[frame_id]
+        frame_velocities = scene.velocities_central_difference[frame_id]
+        person_position = frame_positions[person_id]
+        person_velocity = frame_velocities[person_id]
+        person_acceleration = scene.accelerations_central_difference[frame_id][person_id]
+        
+        interaction_features = self._compute_interaction_features(
+            person_position, person_velocity, frame_positions, frame_velocities, person_id
+        )
+        obstacle_features = self._compute_obstacle_features(person_position, frame_obstacles)
+        goal_position = scene.focus_person_goals[person_id]
+        goal_features = self._compute_goal_features(person_position, goal_position)
+        general_features = {
+            "position_x": person_position.x,
+            "position_y": person_position.y,
+            "velocity_x": person_velocity.x,
+            "velocity_y": person_velocity.y,
+            **goal_features
+        }
+        label = {"acceleration_x": person_acceleration.x, "acceleration_y": person_acceleration.y}
+
+        scene_datapoint: SceneDatapoint = {
+            "person_features": general_features,
+            "interaction_features": interaction_features,
+            "obstacle_features": obstacle_features,
+            "label": label
+        }
+        return scene_datapoint
+
+
     def scene_to_datapoints(self, scene: Scene) -> SceneDatapoints:
         datapoints: SceneDatapoints = {}
         
-        velocities = scene.velocities_central_difference()
-        accelerations = scene.accelerations_central_difference()
-
         for frame_id in scene.sorted_frame_ids:
             datapoints[frame_id] = {}
-            frame_positions = scene.trajectories[frame_id]
-            frame_velocities = velocities[frame_id]
-            frame_obstacles = scene.obstacles[frame_id]
-
             focus_persons_ids_pool = scene.focus_person_ids if self.include_focus_persons_only else scene.person_ids
-            focus_persons_ids_in_frame = [p_id for p_id in focus_persons_ids_pool if p_id in frame_positions]
-            
+            focus_persons_ids_in_frame = [p_id for p_id in focus_persons_ids_pool if p_id in scene.trajectories[frame_id]]
             for person_id in focus_persons_ids_in_frame:
-                person_position = frame_positions[person_id]
-                person_velocity = frame_velocities[person_id]
-                person_acceleration = accelerations[frame_id][person_id]
-                
-                interaction_features = self._compute_interaction_features(
-                    person_position, person_velocity, frame_positions, frame_velocities, person_id
-                )
-                obstacle_features = self._compute_obstacle_features(person_position, frame_obstacles)
-                goal_position = scene.focus_person_goals.get((frame_id, person_id), Point2D.zero())
-                goal_features = self._compute_goal_features(person_position, goal_position)
-                general_features = {
-                    "position_x": person_position.x,
-                    "position_y": person_position.y,
-                    "velocity_x": person_velocity.x,
-                    "velocity_y": person_velocity.y,
-                    **goal_features
-                }
-                label = {"acceleration_x": person_acceleration.x, "acceleration_y": person_acceleration.y}
-
-                scene_datapoint: SceneDatapoint = {
-                    "person_features": general_features,
-                    "interaction_features": interaction_features,
-                    "obstacle_features": obstacle_features,
-                    "label": label
-                }
-                datapoints[frame_id][person_id] = scene_datapoint
+                datapoints[frame_id][person_id] = self.position_to_datapoint(scene, frame_id, person_id)
         
         return datapoints

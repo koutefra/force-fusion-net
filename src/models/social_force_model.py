@@ -1,4 +1,4 @@
-from data.dataset import PedestrianDataset
+from data.pedestrian_dataset import PedestrianDataset
 from core.vector2d import Point2D, Velocity, Acceleration 
 from core.scene import Scene
 import math
