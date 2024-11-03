@@ -87,6 +87,7 @@ class TrajnetLoader(BaseLoader):
                 scene_data = scenes_data[scene.id]
                 if track.f not in scene_data["trajectories"]:
                     scene_data["trajectories"][track.f] = {}
+                    scene_data["obstacles"][track.f] = []
                 scene_data["trajectories"][track.f][track.p] = Point2D(track.x, track.y)
 
 

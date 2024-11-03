@@ -10,10 +10,12 @@ from torch import nn
 import torch.nn.functional as F
 from data.pedestrian_dataset import PedestrianDataset
 from data.trajnet_loader import TrajnetLoader
-from data.feature_extractor import SceneFeatureExtractor
+from data.basic_scene_processor import SceneFeatureExtractor
 from data.torch_dataset import TorchPedestrianDataset
 from typing import Dict, Tuple, List
 from models.neural_net_model import NeuralNetModel
+from torch.nn.utils.rnn import pad_sequence
+import torchmetrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=64, type=int, help="Batch size.")
@@ -51,32 +53,55 @@ def main(args: argparse.Namespace) -> None:
     train_dataset, eval_dataset = pedestrian_dataset.split(args.val_ratio)
     train_dataset, eval_dataset = TorchPedestrianDataset(train_dataset), TorchPedestrianDataset(eval_dataset)
 
-    person_features_dim = train_dataset[0].shape[0]
-    interaction_features_dim = train_dataset[1].shape[0]
-    label_dim = train_dataset[3].shape[0]
+    ex_data = train_dataset[0]
+    ex_person_features, ex_interaction_features, ex_obstacle_features, ex_label, ex_metadata = ex_data
+    person_features_dim = ex_person_features.shape[0]
+    interaction_features_dim = ex_interaction_features.shape[1]
+    label_dim = ex_label.shape[0]
+    # print(ex_person_features.shape, ex_interaction_features.shape, ex_label.shape)
 
-    def prepare_batch(data: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, int]]]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def prepare_batch(data: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, int]]]) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         person_features_ts, interaction_features_ts, obstacle_features_ts, label_ts, metadata = zip(*data)
-        inputs = [torch.cat((person, interaction), dim=-1) for person, interaction in zip(person_features_ts, interaction_features_ts)]
-        inputs = torch.stack(inputs)
-        outputs = torch.stack(label_ts)
-        return inputs.float(), outputs.float()
+        person_features_stack = torch.stack(person_features_ts).float() 
+        interaction_features_stack = pad_sequence(interaction_features_ts, batch_first=True).float()
+        inputs = (person_features_stack, interaction_features_stack)
+        outputs = torch.stack(label_ts).float()
+        # print(inputs[0].shape, inputs[1].shape, outputs.shape)
+        return inputs, outputs
 
-    train = torch.utils.data.DataLoader(train, batch_size=args.batch_size, collate_fn=prepare_batch)
-    eval = torch.utils.data.DataLoader(eval, batch_size=args.batch_size, collate_fn=prepare_batch)
+    train = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
+    eval = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
 
     model = NeuralNetModel(person_features_dim, interaction_features_dim, args.interaction_size, 
                            args.hidden_sizes, label_dim)
 
+    class MyMeanAbsoluteError(torchmetrics.Metric):
+        def __init__(self):
+            super().__init__()
+            # Add two state variables for sum of absolute errors and count
+            self.add_state("sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum")
+            self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
+
+        def update(self, preds: torch.Tensor, target: torch.Tensor):
+            # Update the sum of absolute errors and count
+            self.sum_abs_error += torch.sum(torch.abs(preds - target))
+            self.count += target.numel()  # Count the number of elements in the target
+
+        def compute(self):
+            # Compute the mean absolute error
+            return self.sum_abs_error / self.count
+
     model.configure(
         optimizer=torch.optim.Adam(model.parameters(), lr=args.lr),
         device=args.device,
-        logdir=args.logdir
+        logdir=args.logdir,
+        metrics={'MAE': torchmetrics.MeanAbsoluteError(), 'MyMAE': MyMeanAbsoluteError()},
+        loss=torch.nn.MSELoss()
     )
 
     logs = model.fit(train, dev=eval, epochs=args.epochs, callbacks=[])
-    if args.model_path:
-        model.save_weights(args.model_path)
+    # if args.model_path:
+        # model.save_weights(args.model_path)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))

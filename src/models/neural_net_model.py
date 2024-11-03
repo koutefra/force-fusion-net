@@ -18,8 +18,7 @@ class NeuralNetModel(TrainableModule):
             layer_input_size = h_size
         self.fc_output = nn.Linear(layer_input_size, output_size)
 
-    def forward(self, x: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
-        x_general, x_interaction = x
+    def forward(self, x_general: torch.Tensor, x_interaction: torch.Tensor) -> torch.Tensor:
         # x_general.shape: [batch_size, general_features_dim], x_interaction.shape: [batch_size, m, interaction_features_dim]
         x_interaction_features = F.relu(self.fc_interaction(x_interaction))
         x_interaction_features_sum = torch.sum(x_interaction_features, dim=1)  # shape [batch_size, interaction_features_dim]

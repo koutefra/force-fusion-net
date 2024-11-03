@@ -2,7 +2,7 @@ from typing import List, Tuple, Any, Dict
 from core.scene import Scene
 from core.scene_datapoint import SceneDatapoints, SceneDatapoint
 from data.base_loader import BaseLoader 
-from data.feature_extractor import SceneFeatureExtractor
+from data.basic_scene_processor import SceneFeatureExtractor
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -23,7 +23,7 @@ class PedestrianDataset:
     def to_datapoints(self) -> Dict[int, SceneDatapoints]:
         datapoints = {}
         for scene_id, scene in self.scenes.items():
-            datapoints[scene_id] = self.feature_extractor(scene)
+            datapoints[scene_id] = self.feature_extractor.scene_to_datapoints(scene)
         return datapoints
 
     def scene_to_datapoints(self, scene_id: int) -> SceneDatapoints:

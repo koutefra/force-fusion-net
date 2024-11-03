@@ -4,7 +4,7 @@ from data.pedestrian_dataset import PedestrianDataset
 from core.scene import Scene
 
 class TorchPedestrianDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset: PedestrianDataset):
+    def __init__(self, scenes: Dict[int, Scene], feature_extractor: ):
         self.dataset = dataset
         self.index_map = self._build_index_map()
 
@@ -39,8 +39,14 @@ class TorchPedestrianDataset(torch.utils.data.Dataset):
 
         # Convert data to tensors
         person_features = torch.tensor(list(datapoint["person_features"].values()), dtype=torch.float32)
-        interaction_features = torch.tensor(list(datapoint["interaction_features"].values()), dtype=torch.float32)
-        obstacle_features = torch.tensor(list(datapoint["obstacle_features"].values()), dtype=torch.float32)
+        interaction_features = torch.tensor(
+            [list(feature.values()) for feature in datapoint["interaction_features"]],
+            dtype=torch.float32
+        )
+        obstacle_features = torch.tensor(
+            [list(feature.values()) for feature in datapoint["obstacle_features"]],
+            dtype=torch.float32
+        )
         label = torch.tensor(list(datapoint["label"].values()), dtype=torch.float32)
 
         # Metadata for reference
