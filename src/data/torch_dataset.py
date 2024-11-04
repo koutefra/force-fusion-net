@@ -1,55 +1,44 @@
 import torch
-from typing import Dict, Tuple, List, Any, Callable
-from data.pedestrian_dataset import PedestrianDataset
+from typing import Dict, Tuple, Callable, Any
 from core.scene import Scene
+from core.scene_datapoint import SceneDatapoints, SceneDatapoint
+from data.scene_processor import SceneProcessor
 
-class TorchPedestrianDataset(torch.utils.data.Dataset):
-    def __init__(self, scenes: Dict[int, Scene], feature_extractor: ):
-        self.dataset = dataset
-        self.index_map = self._build_index_map()
-
-    def _build_index_map(self) -> List[Tuple[int, int, int]]:
-        index_map = []
-        for scene_id in self.dataset.get_scene_ids():
-            scene_datapoints = self.dataset.scene_to_datapoints(scene_id)
-            for frame_id, persons in scene_datapoints.items():
-                for person_id in persons.keys():
-                    index_map.append((scene_id, frame_id, person_id))
-        return index_map
-
-    def __len__(self):
-        return len(self.index_map)
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, int]]:
-        """
-        Retrieve a single data point by converting the relevant scene, frame, and person
-        data to tensors on demand.
-
-        Returns:
-        - person_features: Tensor of person-related features
-        - interaction_features: Tensor of interaction-related features
-        - obstacle_features: Tensor of obstacle-related features
-        - label: Tensor of target values
-        - metadata: A dictionary containing `scene_id`, `frame_id`, and `person_id` for reference.
-        """
-        scene_id, frame_id, person_id = self.index_map[idx]
-
-        scene_datapoints = self.dataset.scene_to_datapoints(scene_id)
-        datapoint = scene_datapoints[frame_id][person_id]
-
-        # Convert data to tensors
-        person_features = torch.tensor(list(datapoint["person_features"].values()), dtype=torch.float32)
-        interaction_features = torch.tensor(
-            [list(feature.values()) for feature in datapoint["interaction_features"]],
-            dtype=torch.float32
+class TorchDataset(torch.utils.data.Dataset):
+    def __init__(self, scenes: Dict[int, SceneDatapoints], scene_processor: SceneProcessor):
+        self._valid_scenes_indices_dict = scene_processor.get_all_valid_positions(scenes)
+        self._sorted_scenes_indices_list = sorted(
+            self._valid_scenes_indices_dict.keys(), key=lambda x: (x[0], x[1], x[2])
         )
-        obstacle_features = torch.tensor(
-            [list(feature.values()) for feature in datapoint["obstacle_features"]],
-            dtype=torch.float32
-        )
-        label = torch.tensor(list(datapoint["label"].values()), dtype=torch.float32)
+        self._scenes = scenes
+        self._scene_processor = scene_processor
 
-        # Metadata for reference
-        metadata = {"scene_id": scene_id, "frame_id": frame_id, "person_id": person_id}
+    def __len__(self) -> int:
+        return len(self._sorted_scenes_indices_list)
 
-        return person_features, interaction_features, obstacle_features, label, metadata
+    def __getitem__(self, idx: int) -> Tuple[SceneDatapoint, int]:
+        scene_id, frame_id, person_id = self._sorted_scenes_indices_list[idx]
+        scene = self._scenes[scene_id]
+        datapoint = self._scene_processor.get_datapoint_from_position(scene, frame_id, person_id)
+        return datapoint, idx
+
+    def transform(self, transform):
+        return TransformedTorchDataset(self, transform)
+
+    def get_scene_indices(self, idx: int) -> Tuple[int, int, int]:
+        return self._sorted_scenes_indices_list[idx]
+
+class TransformedTorchDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset: torch.utils.data.Dataset, transform: Callable[..., Any]) -> None:
+        self._dataset = dataset
+        self._transform = transform
+
+    def __len__(self) -> int:
+        return len(self._dataset)
+
+    def __getitem__(self, index: int) -> Any:
+        item = self._dataset[index]
+        return self._transform(*item) if isinstance(item, tuple) else self._transform(item)
+
+    def transform(self, transform: Callable[..., Any]) -> "TransformedTorchDataset":
+        return TransformedTorchDataset(self, transform)

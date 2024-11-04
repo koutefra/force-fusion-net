@@ -91,15 +91,15 @@ class Scene:
         return differences
 
     @cached_property
-    def velocities_central_difference(self) -> Dict[int, Dict[int, Velocity]]:
+    def velocities(self) -> Dict[int, Dict[int, Velocity]]:
         return self._central_difference(
             attr="trajectories",
             calc_method=Velocity.from_points
         )
 
     @cached_property
-    def accelerations_central_difference(self) -> Dict[int, Dict[int, Acceleration]]:
+    def accelerations(self) -> Dict[int, Dict[int, Acceleration]]:
         return self._central_difference(
-            attr="velocities_central_difference",
+            attr="velocities",
             calc_method=Acceleration.from_velocities
         )

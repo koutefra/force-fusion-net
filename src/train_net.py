@@ -10,8 +10,9 @@ from torch import nn
 import torch.nn.functional as F
 from data.pedestrian_dataset import PedestrianDataset
 from data.trajnet_loader import TrajnetLoader
-from data.basic_scene_processor import SceneFeatureExtractor
-from data.torch_dataset import TorchPedestrianDataset
+from data.scene_processor import SceneProcessor
+from data.torch_dataset import TorchDataset
+from core.scene_datapoint import SceneDatapoint
 from typing import Dict, Tuple, List
 from models.neural_net_model import NeuralNetModel
 from torch.nn.utils.rnn import pad_sequence
@@ -30,6 +31,7 @@ parser.add_argument("--lr", default=1e-3, type=float, help="Learning rate")
 parser.add_argument("--interaction_size", default=512, type=int, help="Number of hidden channels.")
 parser.add_argument("--hidden_sizes", default=[1024], type=int, nargs='+', help="List of hidden channel sizes.")
 parser.add_argument("--val_ratio", default=0.2, type=float, help="Train/val data ratio.")
+parser.add_argument("--dsp_err_steps", default=5, type=int, help="Steps after which to evaluate the model's pedestrian displacement error.")
 
 def main(args: argparse.Namespace) -> None:
     np.random.seed(args.seed)
@@ -48,37 +50,43 @@ def main(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
-    feature_extractor = SceneFeatureExtractor(True)
-    pedestrian_dataset = PedestrianDataset(loader, feature_extractor, args.dataset_path, args.dataset_name)
-    train_dataset, eval_dataset = pedestrian_dataset.split(args.val_ratio)
-    train_dataset, eval_dataset = TorchPedestrianDataset(train_dataset), TorchPedestrianDataset(eval_dataset)
+    dataset = PedestrianDataset(loader, args.dataset_path, args.dataset_name)
+    train_dataset, eval_dataset = dataset.split(args.val_ratio)
+    scene_processor = SceneProcessor(include_focus_persons_only=True)
+    train_dataset = TorchDataset(train_dataset.get_scenes(), scene_processor) 
+    eval_dataset = TorchDataset(eval_dataset.get_scenes(), scene_processor)
 
-    ex_data = train_dataset[0]
-    ex_person_features, ex_interaction_features, ex_obstacle_features, ex_label, ex_metadata = ex_data
-    person_features_dim = ex_person_features.shape[0]
-    interaction_features_dim = ex_interaction_features.shape[1]
-    label_dim = ex_label.shape[0]
-    # print(ex_person_features.shape, ex_interaction_features.shape, ex_label.shape)
+    def prepare_example(datapoint: Dict[str, List[float]], idx: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+        person_features = torch.tensor(list(datapoint["person_features"].values()), dtype=torch.float32)
+        interaction_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["interaction_features"]], dtype=torch.float32) 
+        obstacle_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["obstacle_features"]], dtype=torch.float32)
+        label = torch.tensor(list(datapoint["label"].values()), dtype=torch.float32)
+        idx = torch.tensor(idx)
+        return (person_features, interaction_features, obstacle_features, idx), label
 
-    def prepare_batch(data: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, int]]]) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-        person_features_ts, interaction_features_ts, obstacle_features_ts, label_ts, metadata = zip(*data)
-        person_features_stack = torch.stack(person_features_ts).float() 
-        interaction_features_stack = pad_sequence(interaction_features_ts, batch_first=True).float()
-        inputs = (person_features_stack, interaction_features_stack)
-        outputs = torch.stack(label_ts).float()
-        # print(inputs[0].shape, inputs[1].shape, outputs.shape)
+    train_dataset = train_dataset.transform(prepare_example)
+    eval_dataset = eval_dataset.transform(prepare_example)
+
+    def prepare_batch(data: List[Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]) -> Tuple[Tuple[torch.Tensor, torch.Tensor, Dict[str, int]], torch.Tensor]:
+        input, output = zip(*data)
+        person_features, interaction_features, obstacle_features, idx = zip(*input)
+        person_features_stack = torch.stack(person_features).float()
+        interaction_features_stack = pad_sequence(interaction_features, batch_first=True).float()
+        obstacles_features_stack = pad_sequence(obstacle_features, batch_first=True).float()
+        idx = torch.stack(idx).float()
+        inputs = (person_features_stack, interaction_features_stack, idx)
+        outputs = torch.stack(output).float()
         return inputs, outputs
 
     train = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
     eval = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
 
-    model = NeuralNetModel(person_features_dim, interaction_features_dim, args.interaction_size, 
-                           args.hidden_sizes, label_dim)
+    model = NeuralNetModel(SceneProcessor.PERSON_FEATURES_DIM, SceneProcessor.INTERACTION_FEATURES_DIM[1], 
+                           args.interaction_size, args.hidden_sizes, SceneProcessor.LABEL_DIM)
 
     class MyMeanAbsoluteError(torchmetrics.Metric):
-        def __init__(self):
+        def __init__(self, dsp_err_steps: int):
             super().__init__()
-            # Add two state variables for sum of absolute errors and count
             self.add_state("sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum")
             self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
