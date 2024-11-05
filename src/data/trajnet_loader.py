@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from core.scene import Scene
 from core.vector2d import Point2D
 from data.base_loader import BaseLoader
+from tqdm import tqdm
 
 class TrajnetLoader(BaseLoader):
     @dataclass
@@ -82,7 +83,8 @@ class TrajnetLoader(BaseLoader):
             }
 
         # populate trajectories and focus_person_goals
-        for track in tracks:
+        print("Pairing the Trajnet++'s scenes and tracks.")
+        for track in tqdm(tracks):
             for scene in scene_lookup[track.f]:
                 scene_data = scenes_data[scene.id]
                 if track.f not in scene_data["trajectories"]:

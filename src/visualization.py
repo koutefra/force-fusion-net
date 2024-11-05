@@ -1,6 +1,5 @@
 import pygame
 from pygame import Surface
-from models.predictor_base import Prediction
 from core.vector2d import Position
 import math
 import sys

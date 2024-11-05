@@ -13,7 +13,6 @@ from data.trajnet_loader import TrajnetLoader
 from data.scene_processor import SceneProcessor
 from data.torch_dataset import TorchDataset
 from core.scene_datapoint import SceneDatapoint
-from evaluation.displacement_metric import DisplacementMetric
 from typing import Dict, Tuple, List
 from models.neural_net_model import NeuralNetModel
 from torch.nn.utils.rnn import pad_sequence
@@ -21,9 +20,8 @@ import torchmetrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=64, type=int, help="Batch size.")
-parser.add_argument("--epochs", default=8, type=int, help="Number of epochs.")
+parser.add_argument("--epochs", default=2, type=int, help="Number of epochs.")
 parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
-parser.add_argument("--model_path", type=str, help="Path where to store the model's weights.")
 parser.add_argument("--dataset_type", default='trajnet++', type=str, help="The dataset type.")
 parser.add_argument("--dataset_name", default='orca_synth_train', type=str, help="The dataset name.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
@@ -32,7 +30,6 @@ parser.add_argument("--lr", default=1e-3, type=float, help="Learning rate")
 parser.add_argument("--interaction_size", default=512, type=int, help="Number of hidden channels.")
 parser.add_argument("--hidden_sizes", default=[1024], type=int, nargs='+', help="List of hidden channel sizes.")
 parser.add_argument("--val_ratio", default=0.2, type=float, help="Train/val data ratio.")
-parser.add_argument("--dsp_err_steps", default=5, type=int, help="Steps after which to evaluate the model's pedestrian displacement error.")
 
 def main(args: argparse.Namespace) -> None:
     np.random.seed(args.seed)
@@ -59,8 +56,15 @@ def main(args: argparse.Namespace) -> None:
 
     def prepare_example(datapoint: Dict[str, List[float]], data_id: Dict[str, int]) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         person_features = torch.tensor(list(datapoint["person_features"].values()), dtype=torch.float32)
+
         interaction_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["interaction_features"]], dtype=torch.float32) 
-        obstacle_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["obstacle_features"]], dtype=torch.float32)
+        if len(interaction_features) == 0:
+            interaction_features = torch.zeros(1, SceneProcessor.INTERACTION_FEATURES_DIM[1])
+            
+        obstacle_features = torch.tensor([list(ob_fts.values()) for ob_fts in datapoint["obstacle_features"]], dtype=torch.float32)
+        if len(obstacle_features) == 0:
+            obstacle_features = torch.zeros(1, SceneProcessor.OBSTACLE_FEATURES_DIM[1])
+
         label = torch.tensor(list(datapoint["label"].values()), dtype=torch.float32)
         return (person_features, interaction_features, obstacle_features), label, data_id
 
@@ -87,15 +91,12 @@ def main(args: argparse.Namespace) -> None:
         optimizer=torch.optim.Adam(model.parameters(), lr=args.lr),
         device=args.device,
         logdir=args.logdir,
-        metrics={
-            'Displacement Error': DisplacementMetric(args.dsp_err_steps)
-        },
+        metrics={'MAE': torchmetrics.MeanAbsoluteError()},
         loss=torch.nn.MSELoss()
     )
 
     logs = model.fit(train, dev=eval, epochs=args.epochs, callbacks=[])
-    # if args.model_path:
-        # model.save_weights(args.model_path)
+    model.save_weights(os.path.join(args.logdir, 'weights.pth'))
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))
