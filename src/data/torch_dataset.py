@@ -16,17 +16,14 @@ class TorchDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self._sorted_scenes_indices_list)
 
-    def __getitem__(self, idx: int) -> Tuple[SceneDatapoint, int]:
+    def __getitem__(self, idx: int) -> Tuple[SceneDatapoint, Dict[str, int]]:
         scene_id, frame_id, person_id = self._sorted_scenes_indices_list[idx]
         scene = self._scenes[scene_id]
         datapoint = self._scene_processor.get_datapoint_from_position(scene, frame_id, person_id)
-        return datapoint, idx
+        return datapoint, {"scene_id": scene_id, "frame_id": frame_id, "person_id": person_id}
 
     def transform(self, transform):
         return TransformedTorchDataset(self, transform)
-
-    def get_scene_indices(self, idx: int) -> Tuple[int, int, int]:
-        return self._sorted_scenes_indices_list[idx]
 
 class TransformedTorchDataset(torch.utils.data.Dataset):
     def __init__(self, dataset: torch.utils.data.Dataset, transform: Callable[..., Any]) -> None:

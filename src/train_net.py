@@ -13,6 +13,7 @@ from data.trajnet_loader import TrajnetLoader
 from data.scene_processor import SceneProcessor
 from data.torch_dataset import TorchDataset
 from core.scene_datapoint import SceneDatapoint
+from evaluation.displacement_metric import DisplacementMetric
 from typing import Dict, Tuple, List
 from models.neural_net_model import NeuralNetModel
 from torch.nn.utils.rnn import pad_sequence
@@ -56,27 +57,25 @@ def main(args: argparse.Namespace) -> None:
     train_dataset = TorchDataset(train_dataset.get_scenes(), scene_processor) 
     eval_dataset = TorchDataset(eval_dataset.get_scenes(), scene_processor)
 
-    def prepare_example(datapoint: Dict[str, List[float]], idx: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+    def prepare_example(datapoint: Dict[str, List[float]], data_id: Dict[str, int]) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         person_features = torch.tensor(list(datapoint["person_features"].values()), dtype=torch.float32)
         interaction_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["interaction_features"]], dtype=torch.float32) 
         obstacle_features = torch.tensor([list(it_fts.values()) for it_fts in datapoint["obstacle_features"]], dtype=torch.float32)
         label = torch.tensor(list(datapoint["label"].values()), dtype=torch.float32)
-        idx = torch.tensor(idx)
-        return (person_features, interaction_features, obstacle_features, idx), label
+        return (person_features, interaction_features, obstacle_features), label, data_id
 
     train_dataset = train_dataset.transform(prepare_example)
     eval_dataset = eval_dataset.transform(prepare_example)
 
-    def prepare_batch(data: List[Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]) -> Tuple[Tuple[torch.Tensor, torch.Tensor, Dict[str, int]], torch.Tensor]:
-        input, output = zip(*data)
-        person_features, interaction_features, obstacle_features, idx = zip(*input)
+    def prepare_batch(data: List[Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor, Dict[str, int]]]) -> Tuple[Tuple[torch.Tensor, torch.Tensor, Dict[str, int]], torch.Tensor]:
+        input, output, metadata = zip(*data)
+        person_features, interaction_features, obstacle_features = zip(*input)
         person_features_stack = torch.stack(person_features).float()
         interaction_features_stack = pad_sequence(interaction_features, batch_first=True).float()
         obstacles_features_stack = pad_sequence(obstacle_features, batch_first=True).float()
-        idx = torch.stack(idx).float()
-        inputs = (person_features_stack, interaction_features_stack, idx)
+        inputs = (person_features_stack, interaction_features_stack)
         outputs = torch.stack(output).float()
-        return inputs, outputs
+        return inputs, outputs, metadata
 
     train = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
     eval = torch.utils.data.DataLoader(eval_dataset, batch_size=args.batch_size, collate_fn=prepare_batch)
@@ -84,26 +83,13 @@ def main(args: argparse.Namespace) -> None:
     model = NeuralNetModel(SceneProcessor.PERSON_FEATURES_DIM, SceneProcessor.INTERACTION_FEATURES_DIM[1], 
                            args.interaction_size, args.hidden_sizes, SceneProcessor.LABEL_DIM)
 
-    class MyMeanAbsoluteError(torchmetrics.Metric):
-        def __init__(self, dsp_err_steps: int):
-            super().__init__()
-            self.add_state("sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum")
-            self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
-
-        def update(self, preds: torch.Tensor, target: torch.Tensor):
-            # Update the sum of absolute errors and count
-            self.sum_abs_error += torch.sum(torch.abs(preds - target))
-            self.count += target.numel()  # Count the number of elements in the target
-
-        def compute(self):
-            # Compute the mean absolute error
-            return self.sum_abs_error / self.count
-
     model.configure(
         optimizer=torch.optim.Adam(model.parameters(), lr=args.lr),
         device=args.device,
         logdir=args.logdir,
-        metrics={'MAE': torchmetrics.MeanAbsoluteError(), 'MyMAE': MyMeanAbsoluteError()},
+        metrics={
+            'Displacement Error': DisplacementMetric(args.dsp_err_steps)
+        },
         loss=torch.nn.MSELoss()
     )
 
