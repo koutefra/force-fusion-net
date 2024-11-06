@@ -1,11 +1,10 @@
 import torch
 from typing import Dict, Tuple, Callable, Any
-from core.scene import Scene
-from core.scene_datapoint import SceneDatapoints, SceneDatapoint
-from data.scene_processor import SceneProcessor
+from data.scene_collection import SceneCollection
 
 class TorchDataset(torch.utils.data.Dataset):
-    def __init__(self, scenes: Dict[int, SceneDatapoints], scene_processor: SceneProcessor):
+    def __init__(self, scene_collection: SceneCollection):
+        scene_collection.get_scenes_as_features()
         self._valid_scenes_indices_dict = scene_processor.get_all_valid_positions(scenes)
         self._sorted_scenes_indices_list = sorted(
             self._valid_scenes_indices_dict.keys(), key=lambda x: (x[0], x[1], x[2])

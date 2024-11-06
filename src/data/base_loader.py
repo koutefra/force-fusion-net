@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Dict
-from core.scene import Scene
+from entities.raw_scenes import RawScenes
 
 class BaseLoader(ABC):
+    def __init__(self, path: str):
+        self.path = path
+    
     @abstractmethod
-    def load_scenes(self, path: str, dataset_name: str) -> Dict[int, Scene]:
+    def load_scenes(self) -> RawScenes:
         pass

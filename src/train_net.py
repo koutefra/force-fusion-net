@@ -8,9 +8,9 @@ from random import randrange
 import torch
 from torch import nn
 import torch.nn.functional as F
-from data.pedestrian_dataset import PedestrianDataset
+from data.scene_collection import PedestrianDataset
 from data.trajnet_loader import TrajnetLoader
-from data.scene_processor import SceneProcessor
+from data.feature_extractor import SceneProcessor
 from data.torch_dataset import TorchDataset
 from core.scene_datapoint import SceneDatapoint
 from typing import Dict, Tuple, List

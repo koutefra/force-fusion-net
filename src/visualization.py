@@ -4,7 +4,7 @@ from core.vector2d import Position
 import math
 import sys
 from typing import Tuple
-from data.pedestrian_dataset import PedestrianDataset
+from data.scene_collection import PedestrianDataset
 
 class Visualizer:
     def __init__(self, target_screen_size: int = 1000, circle_size: int = 10, text_size: int = 15,
