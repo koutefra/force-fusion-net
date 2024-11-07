@@ -1,68 +1,77 @@
-from data.scene_collection import PedestrianDataset
-from core.vector2d import Point2D, Velocity, Acceleration 
-from core.scene import Scene
+from entities.vector2d import Point2D, Velocity, Acceleration 
+from entities.scene import Scene
+from entities.frame_object import FrameObject, PersonInFrame
+from sklearn.model_selection import ParameterGrid
 import math
-from typing import Dict, List, Tuple
 
-class SocialForcePredictor:
-    def __init__(self, A: float = 1.5, B: float = 0.4, tau: float = 1.0, radius: float = 1.5, 
-                 desired_speed: float = 1.5):
+class SocialForceModel:
+    def __init__(
+        self, 
+        A: float = 1.5, 
+        B: float = 0.4, 
+        tau: float = 1.0, 
+        radius: float = 1.5, 
+        desired_speed: float = 1.5
+    ):
         self.A = A  # Interaction force constant
         self.B = B  # Interaction decay constant
         self.radius = radius  # Interaction radius
         self.tau = tau  # Relaxation time constant
         self.desired_speed = desired_speed
 
-    def _desired_force(self, cur_point: Point2D, desired_point: Point2D, velocity: Velocity) -> Acceleration:
-        direction = desired_point - cur_point 
+    def _desired_force(self, cur_pos: Point2D, goal_pos: Point2D, velocity: Velocity) -> Acceleration:
+        direction = goal_pos - cur_pos
         desired_velocity = direction.normalize() * self.desired_speed
         desired_acceleration = (desired_velocity - velocity) * (1 / self.tau)
         return Acceleration(desired_acceleration.x, desired_acceleration.y)
 
-    def _interaction_force(self, point_i: Point2D, point_j: Point2D) -> Acceleration:
-        direction = point_i - point_j
+    def _interaction_force(self, pos_1: Point2D, pos_2: Point2D) -> Acceleration:
+        direction = pos_1 - pos_2
         distance = direction.magnitude()
         force_magnitude = self.A * math.exp((self.radius - distance) / self.B)
         interaction_acceleration = direction.normalize() * force_magnitude
         return Acceleration(interaction_acceleration.x, interaction_acceleration.y)
 
-    def _obstacle_force(self, point: Point2D, obstacle: Point2D) -> Acceleration:
-        return self._interaction_force(point, obstacle)
-
-    def _compute_interaction_forces(self, positions: Dict[int, Point2D], person_id: int) -> Acceleration:
+    def _compute_interaction_forces(self, person: PersonInFrame, frame_objs: list[FrameObject]) -> Acceleration:
         """Compute the sum of interaction forces from all other pedestrians."""
         total_interaction_force_x = 0.0
         total_interaction_force_y = 0.0
-        person_pos = positions[person_id]
-        for other_person_pos in positions.keys():
-            if person_pos == other_person_pos:
+
+        for frame_obj in frame_objs:
+            if not isinstance(frame_obj, PersonInFrame):
                 continue
-            interaction_force = self._interaction_force(person_pos, other_person_pos)
+
+            other_person = frame_obj
+            if person.id == other_person.id:
+                continue
+
+            interaction_force = self._interaction_force(person.position, other_person.position)
             total_interaction_force_x += interaction_force.x
             total_interaction_force_y += interaction_force.y
         return Acceleration(x=total_interaction_force_x, y=total_interaction_force_y)
 
-    def predict_scene(self, scene: Scene) -> Dict[int, Dict[int, Acceleration]]:
-        predicted_accelerations = {}
-        velocities = scene.velocities_central_difference
+    def predict_frame(self, person: PersonInFrame, frame_objs: list[FrameObject], goal_pos: Point2D) -> Acceleration: 
+        desired_force = self._desired_force(person.position, goal_pos, person.velocity)
+        interaction_force = self._compute_interaction_forces(person, frame_objs)
+        total_force = desired_force + interaction_force
+        return total_force
 
-        for frame_id, person_positions in scene.trajectories.items():
-            predicted_accelerations[frame_id] = {}
-            for person_id in scene.focus_person_ids:
-                if person_id not in person_positions:
-                    continue
+    def predict_scene(self, scene: Scene) -> list[Acceleration]:
+        predicted_forces = []
+        for frame in scene.frames:
+            focus_person = next(
+                (obj for obj in frame.frame_objects if isinstance(obj, PersonInFrame) and obj.id == scene.focus_person_id),
+                None
+            )
+            if focus_person is None:
+                continue  # Skip if focus person not found in frame
 
-                current_position = person_positions[person_id]
-                goal_position = scene.focus_person_goals[person_id]
-                velocity = velocities[frame_id][person_id]
-                force_desired = self._desired_force(current_position, goal_position, velocity)
-                total_interaction_force = self._compute_interaction_forces(person_positions, person_id)
-                total_force = force_desired + total_interaction_force
-                predicted_accelerations[frame_id][person_id] = Acceleration(x=total_force.x, y=total_force.y)
-        return predicted_accelerations
+            predicted_force = self.predict_frame(focus_person, frame.frame_objects, scene.focus_person_goal)
+            predicted_forces.append(predicted_force)
+        return predicted_forces
 
-    def predict(self, scenes: Dict[Scene]) -> Dict[Dict[int, Dict[int, Acceleration]]]:
-        predicted_accelerations = {}
+    def predict_scenes(self, scenes: dict[int, Scene]) -> dict[int, list[Acceleration]]:
+        predicted_forces = {}
         for scene_id, scene in scenes.items():
-            predicted_accelerations[scene_id] = self.predict_scene(scene)
-        return predicted_accelerations
+            predicted_forces[scene_id] = self.predict_scene(scene)
+        return predicted_forces

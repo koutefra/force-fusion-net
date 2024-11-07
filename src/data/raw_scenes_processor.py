@@ -16,17 +16,17 @@ class RawScenesProcessor:
     ) -> dict[int, Scene]:
         raw_data_paired = RawScenesProcessor.assign_tracks_to_scenes(raw_scenes, print_progress)
         scenes = {}
-        
-        for raw_scene in raw_scenes.scenes:
+
+        for raw_scene in tqdm(raw_scenes.scenes, desc="Processing scene data...", disable=not print_progress):
             scene_id = raw_scene.id
-            frames = RawScenesProcessor.process_frames(raw_data_paired[scene_id], raw_scene.fps, print_progress)
+            frames = RawScenesProcessor.process_frames(raw_data_paired[scene_id], raw_scene.fps)
             focus_person_goal = RawScenesProcessor.get_person_goal_position(raw_scene.person_id, frames)
             tag = RawScenesProcessor.process_tags(raw_scene.tag)
             
             scenes[scene_id] = Scene(
                 id=scene_id,
                 focus_person_id=raw_scene.person_id,
-                focus_person_goals=focus_person_goal,
+                focus_person_goal=focus_person_goal,
                 fps=raw_scene.fps,
                 frames=frames,
                 tag=tag,
@@ -44,13 +44,13 @@ class RawScenesProcessor:
         raise ValueError(f"Invalid person_id {person_id}. Person not found in any frame.")
 
     @staticmethod
-    def process_frames(tracks_data: dict[int, dict[int, Point2D]], fps: float, print_progress: bool) -> list[Frame]:
+    def process_frames(tracks_data: dict[int, dict[int, Point2D]], fps: float) -> list[Frame]:
         frame_numbers = sorted(tracks_data.keys())
         frames = []
         if len(frame_numbers) < 5:
             return frames
 
-        for i in tqdm(range(2, len(frame_numbers) - 2), desc="Processing frames...", disable=not print_progress):
+        for i in range(2, len(frame_numbers) - 2):
             frames.append(RawScenesProcessor.process_single_frame(i, frame_numbers, tracks_data, fps))
 
         return frames
@@ -130,10 +130,17 @@ class RawScenesProcessor:
     def assign_tracks_to_scenes(raw_scenes: RawScenes, print_progress: bool) -> dict[int, dict[int, dict[int, Point2D]]]:
         tracks_for_scenes = defaultdict(lambda: defaultdict(dict))
         
+        # Create a lookup table to map frame numbers to relevant scenes
+        frame_to_scenes = defaultdict(list)
+        for scene in raw_scenes.scenes:
+            for frame in range(scene.start_frame_number, scene.end_frame_number + 1):
+                frame_to_scenes[frame].append(scene)
+
         for track in tqdm(raw_scenes.tracks, 
                           desc='Associating tracks with scenes...', 
                           disable=not print_progress):
-            for scene in raw_scenes.scenes:
+            relevant_scenes = frame_to_scenes.get(track.frame_number, [])
+            for scene in relevant_scenes:
                 if scene.start_frame_number <= track.frame_number <= scene.end_frame_number:
                     tracks_for_scenes[scene.id][track.frame_number][track.person_id] = Point2D(x=track.x, y=track.y)
 

@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 import os
+
 import torch
 import torchmetrics
 
@@ -68,8 +70,7 @@ class TrainableModule(torch.nn.Module):
             epoch_message = f"Epoch={epoch+1}/{epochs}"
             data_and_progress = self._tqdm(
                 dataloader, epoch_message, unit="batch", leave=False, disable=None if verbose == 2 else not verbose)
-            for batch in data_and_progress:
-                xs, y, metadata = batch
+            for xs, y in data_and_progress:
                 assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
                 assert isinstance(y, torch.Tensor), "The output must be a single tensor."
                 xs, y = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,))), y.to(self.device)
@@ -120,8 +121,7 @@ class TrainableModule(torch.nn.Module):
         self.eval()
         self.loss_metric.reset()
         self.metrics.reset()
-        for batch in dataloader:
-            xs, y, metadata = batch
+        for xs, y in dataloader:
             assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
             assert isinstance(y, torch.Tensor), "The output must be a single tensor."
             xs, y = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,))), y.to(self.device)

@@ -1,15 +1,19 @@
 from entities.scene import Scene
 from entities.vector2d import Point2D
 from entities.frame_object import PersonInFrame, FrameObject
+from tqdm import tqdm
 
 class FeatureExtractor:
-    PERSON_FEATURES_DIM = 8
-    INTERACTION_FEATURES_DIM = (None, 5)
+    individual_fts_dim = 8
+    interaction_fts_dim = (None, 5)
             
     @staticmethod
-    def extract_all_scenes_features(scenes: dict[int, Scene]) -> dict[int, list[tuple[dict[str, float], list[dict[str, float]]]]]:
+    def extract_all_scenes_features(
+        scenes: dict[int, Scene],
+        print_progress: bool = True
+    ) -> dict[int, list[tuple[dict[str, float], list[dict[str, float]]]]]:
         scenes_features = {}
-        for scene_id, scene in scenes.items():
+        for scene_id, scene in tqdm(scenes.items(), desc="Extracting features from scenes", disable=not print_progress):
             scenes_features[scene_id] = FeatureExtractor.extract_scene_features(scene)
         return scenes_features
 

@@ -1,29 +1,45 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-from typing import Tuple, Dict, List
 from models.trainable_module import TrainableModule
 
 class NeuralNetModel(TrainableModule):
-    def __init__(self, person_features_dim: int, interaction_features_dim: int, interaction_output_size: int,
-                 hidden_sizes: List[int], output_size: int):
+    def __init__(
+        self, 
+        individual_fts_dim: int, 
+        interaction_fts_dim: int, 
+        interaction_output_dim: int,
+        hidden_dims: list[int], 
+        output_dim: int
+    ):
         super(NeuralNetModel, self).__init__()
-        self.fc_interaction = nn.Linear(interaction_features_dim, interaction_output_size)
+        self.individual_fts_dim = individual_fts_dim
+        self.interaction_fts_dim = interaction_fts_dim
+        self.interaction_output_dim = interaction_output_dim
+        self.hidden_dims = hidden_dims
+        self.output_dim = output_dim
 
+        self.fc_interaction = nn.Linear(interaction_fts_dim, interaction_output_dim)
         self.fcs_main = nn.ModuleList()
-        layer_input_size = person_features_dim + interaction_output_size
-        for h_size in hidden_sizes:
-            self.fcs_main.append(nn.Linear(layer_input_size, h_size))
-            layer_input_size = h_size
-        self.fc_output = nn.Linear(layer_input_size, output_size)
+        layer_input_dim = individual_fts_dim + interaction_output_dim
+        for h_dim in hidden_dims:
+            self.fcs_main.append(nn.Linear(layer_input_dim, h_dim))
+            layer_input_size = h_dim
+        self.fc_output = nn.Linear(layer_input_size, output_dim)
 
-    def forward(self, x_general: torch.Tensor, x_interaction: torch.Tensor) -> torch.Tensor:
-        # x_general.shape: [batch_size, general_features_dim], x_interaction.shape: [batch_size, m, interaction_features_dim]
-        x_interaction_features = F.relu(self.fc_interaction(x_interaction))
-        x_interaction_features_sum = torch.sum(x_interaction_features, dim=1)  # shape [batch_size, interaction_features_dim]
+    def forward(self, x_individual: torch.Tensor, x_interaction: torch.Tensor) -> torch.Tensor:
+        # x_individual.shape: [batch_size, individual_fts_dim] 
+        # x_interaction.shape: [batch_size, m, interaction_fts_dim]
 
-        x_combined = torch.concat([x_general, x_interaction_features_sum], dim=1)  # shape [batch_size, general_features_dim + interaction_features_dim]
+        if x_interaction.numel() != 0: # not empty
+            x_interaction = self.fc_interaction(x_interaction)
+            x_interaction = F.relu(x_interaction)
+            x_interaction= torch.sum(x_interaction, dim=1)
+        else:
+            x_interaction = torch.zeros(x_interaction.shape[0],  self.interaction_output_dim)
+
+        x_combined = torch.concat([x_individual, x_interaction], dim=1)
+        # x_combined is of shape [batch_size, individual_fts_dim + interaction_output_dim]
         x = x_combined
         for layer in self.fcs_main:
             x = F.relu(layer(x))
