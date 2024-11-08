@@ -5,9 +5,9 @@ from abc import ABC
 @dataclass(frozen=True)
 class FrameObject(ABC):
     id: int
+    position: Point2D
 
 @dataclass(frozen=True)
 class PersonInFrame(FrameObject):
-    position: Point2D
     velocity: Velocity
     acceleration: Acceleration

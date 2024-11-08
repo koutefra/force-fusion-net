@@ -1,29 +1,40 @@
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Union
 
 @dataclass(frozen=True)
 class Point2D:
     x: float = 0.0
     y: float = 0.0
 
-    def to_int_tuple(self) -> Tuple[int, int]:
+    def to_tuple(self) -> tuple[float, float]:
+        return (self.x, self.y)
+
+    def to_int_tuple(self) -> tuple[int, int]:
         return (int(self.x), int(self.y))
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.x}, {self.y})"
 
-    def __add__(self, other: "Point2D") -> "Point2D":
-        return self.__class__(self.x + other.x, self.y + other.y)
+    def __add__(self, other: Union[int, float, "Point2D"]) -> "Point2D":
+        if isinstance(other, Point2D):
+            return self.__class__(self.x + other.x, self.y + other.y)
+        elif isinstance(other, (int, float)):
+            return self.__class__(self.x + other, self.y + other)
+        else:
+            raise TypeError(f"Unsupported type for addition: {type(other)}")
 
-    def __sub__(self, other: "Point2D") -> "Point2D":
-        return self.__class__(self.x - other.x, self.y - other.y)
+    def __sub__(self, other: Union[int, float, "Point2D"]) -> "Point2D":
+        return self + (-other) 
 
     def __mul__(self, scalar: float) -> "Point2D":
         return self.__class__(self.x * scalar, self.y * scalar)
 
     def __rmul__(self, scalar: float) -> "Point2D":
         return self.__mul__(scalar)
+
+    def __neg__(self) -> "Point2D":
+        return self.__class__(-self.x, -self.y)
 
     def magnitude(self) -> float:
         return math.sqrt(self.x**2 + self.y**2)
@@ -57,6 +68,17 @@ class Point2D:
         if not isinstance(other, Point2D):
             return False
         return math.isclose(self.x, other.x) and math.isclose(self.y, other.y)
+
+    def __getitem__(self, index: int) -> float:
+        if index == 0:
+            return self.x
+        elif index == 1:
+            return self.y
+        else:
+            raise IndexError("Index out of range for Point2D")
+
+    def __len__(self) -> int:
+        return 2
 
 @dataclass(frozen=True)
 class Velocity(Point2D):
