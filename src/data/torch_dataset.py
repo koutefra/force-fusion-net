@@ -16,7 +16,7 @@ class TorchDataset(torch.utils.data.Dataset):
                 self.index_to_scene_frame[len(self.flattened_features) - 1] = (scene_id, frame_id)
 
     def __len__(self) -> int:
-        return len(self.scenes_features)
+        return len(self.flattened_features)
 
     def __getitem__(self, idx: int) -> tuple[tuple[list[float], list[list[float]]], tuple[float, float]]:
         datapoint = self.flattened_features[idx]

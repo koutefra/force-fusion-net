@@ -1,6 +1,7 @@
 from entities.vector2d import Point2D, Velocity, Acceleration 
 from entities.scene import Scene
 from entities.frame_object import FrameObject, PersonInFrame
+from entities.frame import Frame
 from sklearn.model_selection import ParameterGrid
 import math
 
@@ -50,23 +51,17 @@ class SocialForceModel:
             total_interaction_force_y += interaction_force.y
         return Acceleration(x=total_interaction_force_x, y=total_interaction_force_y)
 
-    def predict_frame(self, person: PersonInFrame, frame_objs: list[FrameObject], goal_pos: Point2D) -> Acceleration: 
+    def predict_frame(self, frame: Frame, person_id: int, goal_pos: Point2D) -> Acceleration: 
+        person = [o for o in frame.frame_objects if isinstance(o, PersonInFrame) and o.id == person_id][0]
         desired_force = self._desired_force(person.position, goal_pos, person.velocity)
-        interaction_force = self._compute_interaction_forces(person, frame_objs)
+        interaction_force = self._compute_interaction_forces(person, frame.frame_objects)
         total_force = desired_force + interaction_force
         return total_force
 
     def predict_scene(self, scene: Scene) -> list[Acceleration]:
         predicted_forces = []
         for frame in scene.frames:
-            focus_person = next(
-                (obj for obj in frame.frame_objects if isinstance(obj, PersonInFrame) and obj.id == scene.focus_person_id),
-                None
-            )
-            if focus_person is None:
-                continue  # Skip if focus person not found in frame
-
-            predicted_force = self.predict_frame(focus_person, frame.frame_objects, scene.focus_person_goal)
+            predicted_force = self.predict_frame(frame, scene.focus_person_id, scene.focus_person_goal)
             predicted_forces.append(predicted_force)
         return predicted_forces
 

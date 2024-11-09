@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 from data.scene_collection import SceneCollection
 from data.trajnet_loader import TrajnetLoader
+from entities.frame_object import PersonInFrame
 from visualization.visualization import Visualizer
 from models.neural_net_predictor import NeuralNetPredictor
 from models.social_force_predictor import SocialForcePredictor
@@ -36,7 +37,7 @@ def main(args: argparse.Namespace) -> None:
     predictor = None
     if args.predictor_path:
         if args.predictor_type == 'neural_net':
-            predictor = NeuralNetPredictor(args.predictor_path)
+            predictor = NeuralNetPredictor(args.predictor_path, device='cpu')
         elif args.predictor_type == 'social_force':
             predictor = SocialForcePredictor(args.predictor_path)
         else:
@@ -46,10 +47,9 @@ def main(args: argparse.Namespace) -> None:
     visualizer = Visualizer()
     for scene_id in args.scenes_to_show:
         scene = scene_collection.scenes[scene_id]
+        new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
 
-        pred_accelerations = predictor.predict_scene(scene)
-        
-        preds = [(args.predictor_type, pred_accelerations, Visualizer.default_colors["skin_orange"])] 
+        preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
 
         visualizer.visualize(scene, preds=preds)
 
