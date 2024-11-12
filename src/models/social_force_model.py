@@ -51,22 +51,9 @@ class SocialForceModel:
             total_interaction_force_y += interaction_force.y
         return Acceleration(x=total_interaction_force_x, y=total_interaction_force_y)
 
-    def predict_frame(self, frame: Frame, person_id: int, goal_pos: Point2D) -> Acceleration: 
+    def predict(self, frame: Frame, person_id: int, goal_pos: Point2D) -> Acceleration: 
         person = [o for o in frame.frame_objects if isinstance(o, PersonInFrame) and o.id == person_id][0]
         desired_force = self._desired_force(person.position, goal_pos, person.velocity)
         interaction_force = self._compute_interaction_forces(person, frame.frame_objects)
         total_force = desired_force + interaction_force
         return total_force
-
-    def predict_scene(self, scene: Scene) -> list[Acceleration]:
-        predicted_forces = []
-        for frame in scene.frames:
-            predicted_force = self.predict_frame(frame, scene.focus_person_id, scene.focus_person_goal)
-            predicted_forces.append(predicted_force)
-        return predicted_forces
-
-    def predict_scenes(self, scenes: dict[int, Scene]) -> dict[int, list[Acceleration]]:
-        predicted_forces = {}
-        for scene_id, scene in scenes.items():
-            predicted_forces[scene_id] = self.predict_scene(scene)
-        return predicted_forces

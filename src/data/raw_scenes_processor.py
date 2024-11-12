@@ -1,23 +1,23 @@
 from tqdm import tqdm
 from entities.vector2d import Point2D, Velocity, Acceleration
-from entities.frame_object import PersonInFrame
+from entities.frame_object import PersonInFrame, FrameObject
 from entities.frame import Frame
 from entities.scene import Scene
-from entities.raw_scenes import RawScenes
+from entities.raw_scenes_data import RawSceneData
 from collections import defaultdict
 
 class RawScenesProcessor:
 
     @staticmethod
     def process_raw_scenes(
-        raw_scenes: RawScenes, 
+        raw_scenes: RawSceneData, 
         dataset_name: str, 
         print_progress: bool = True
     ) -> dict[int, Scene]:
         raw_data_paired = RawScenesProcessor.assign_tracks_to_scenes(raw_scenes, print_progress)
         scenes = {}
 
-        for raw_scene in tqdm(raw_scenes.scenes, desc="Processing scene data...", disable=not print_progress):
+        for raw_scene in tqdm(raw_scenes.scenes, desc=f"Processing {dataset_name} scene data...", disable=not print_progress):
             scene_id = raw_scene.id
             frames = RawScenesProcessor.process_frames(raw_data_paired[scene_id], raw_scene.fps)
             focus_person_goal = RawScenesProcessor.get_person_goal_position(raw_scene.person_id, frames)
@@ -36,6 +36,16 @@ class RawScenesProcessor:
         return scenes
 
     @staticmethod
+    def get_scene_lengths(raw_scenes: RawSceneData, print_progress: bool = True) -> dict[int, int]:
+        ids = {}
+        raw_data_paired = RawScenesProcessor.assign_tracks_to_scenes(raw_scenes, print_progress)
+        for raw_scene in tqdm(raw_scenes.scenes, desc="Processing scene lengths data...", disable=not print_progress):
+            scene_id = raw_scene.id
+            frames = RawScenesProcessor.process_frames(raw_data_paired[scene_id], raw_scene.fps)
+            ids[scene_id] = len(frames)
+        return ids
+
+    @staticmethod
     def get_person_goal_position(person_id: int, frames: list[Frame]) -> Point2D:
         for frame in reversed(frames):
             for frame_object in frame.frame_objects:
@@ -44,13 +54,53 @@ class RawScenesProcessor:
         raise ValueError(f"Invalid person_id {person_id}. Person not found in any frame.")
 
     @staticmethod
-    def process_frames(tracks_data: dict[int, dict[int, Point2D]], fps: float) -> list[Frame]:
+    def process_frames(
+        tracks_data: dict[int, dict[int, Point2D]], 
+        fps: float,
+        nan_strategy: str = "zero",
+        backward_fdm_win_size: int = 2,
+        print_progress: bool = True
+    ) -> list[Frame]:
+        if nan_strategy != "zero":
+            raise ValueError(f"Only zero NaN strategy is currently supported.")
         frame_numbers = sorted(tracks_data.keys())
-        frames = []
-        if len(frame_numbers) < 5:
-            return frames
+        trajectories = defaultdict(lambda: defaultdict(dict))
 
-        for i in range(2, len(frame_numbers) - 2):
+        # compute the trajectories data
+        for frame_id in range(len(frame_numbers)):
+            frame_number = frame_numbers[frame_id]
+            frame_track_data = tracks_data[frame_number]
+            for pid, pos in frame_track_data.items():
+                trajectories[pid][frame_id] = {"pos": pos, "vel": Velocity.zero(), "acc": Acceleration.zero()} 
+
+        # compute velocities and accelerations
+        for prop in ["vel", "acc"]:
+            for pid, frames in trajectories.items():
+                frame_ids = list(frames.keys())
+                for frame_id in frame_ids:
+                    start_frame_id = max(0, frame_id - backward_fdm_win_size)
+                    required_frame_ids = range(frame_id, frame_id - backward_fdm_win_size)
+                    value_window = [
+                        frames[fid][prop] for fid in required_frame_ids
+                        if fid in frames
+                    ]
+                    frame_numbers_window = [frame_numbers[fid] for fid in required_frame_ids]
+                        delta_times = [
+                            (f_num_j - f_num_i) / fps for f_num_i, f_num_j in 
+                            zip(frame_numbers_window, frame_numbers_window[1:])
+                        ]
+                    else:
+
+                
+
+
+                if i <= backward_fdm_win_size and nan_strategy == "last_value":
+                    previous_frames = frames[frame_id - backward_fdm_win_size:frame_id]
+                
+            else:
+                
+
+            frame = Frame(number=frame_numbers[frame_id], frame_objects=[])
             frames.append(RawScenesProcessor.process_single_frame(i, frame_numbers, tracks_data, fps))
 
         return frames
@@ -92,12 +142,14 @@ class RawScenesProcessor:
         return PersonInFrame(id=person_id, position=position, velocity=velocity, acceleration=acceleration)
 
     @staticmethod
-    def compute_motion_parameters(prev_prev_frame_point: tuple[Point2D, int], 
-                                  prev_frame_point: tuple[Point2D, int], 
-                                  cur_frame_point: tuple[Point2D, int], 
-                                  next_frame_point: tuple[Point2D, int], 
-                                  next_next_frame_point: tuple[Point2D, int], 
-                                  fps: float) -> tuple[Point2D, Velocity, Acceleration]:
+    def backward_fdm(
+        positions: list[Point2D],
+        delta_times: list[int]
+    ) -> tuple[Point2D, Velocity, Acceleration]:
+        pos, frame_number = points[0]
+        vel = Velocity.from_points(positions, delta_times)
+    
+        # old function
         prev_prev_point, prev_prev_frame = prev_prev_frame_point
         prev_point, prev_frame = prev_frame_point
         cur_point, cur_frame = cur_frame_point
@@ -127,21 +179,20 @@ class RawScenesProcessor:
         return [] if tag is None else tag if isinstance(tag, list) else [tag]
 
     @staticmethod
-    def assign_tracks_to_scenes(raw_scenes: RawScenes, print_progress: bool) -> dict[int, dict[int, dict[int, Point2D]]]:
+    def assign_tracks_to_scenes(raw_scenes: RawSceneData, print_progress: bool) -> dict[int, dict[int, dict[int, Point2D]]]:
         tracks_for_scenes = defaultdict(lambda: defaultdict(dict))
         
         # Create a lookup table to map frame numbers to relevant scenes
-        frame_to_scenes = defaultdict(list)
+        frame_to_scene_ids = defaultdict(list)
         for scene in raw_scenes.scenes:
             for frame in range(scene.start_frame_number, scene.end_frame_number + 1):
-                frame_to_scenes[frame].append(scene)
+                frame_to_scene_ids[frame].append(scene.id)
 
         for track in tqdm(raw_scenes.tracks, 
                           desc='Associating tracks with scenes...', 
                           disable=not print_progress):
-            relevant_scenes = frame_to_scenes.get(track.frame_number, [])
-            for scene in relevant_scenes:
-                if scene.start_frame_number <= track.frame_number <= scene.end_frame_number:
-                    tracks_for_scenes[scene.id][track.frame_number][track.person_id] = Point2D(x=track.x, y=track.y)
+            relevant_scene_ids = frame_to_scene_ids.get(track.frame_number, [])
+            for scene_id in relevant_scene_ids:
+                tracks_for_scenes[scene_id][track.frame_number].setdefault(track.person_id, Point2D(x=track.x, y=track.y))
 
         return tracks_for_scenes

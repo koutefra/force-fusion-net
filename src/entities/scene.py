@@ -22,7 +22,7 @@ class Scene:
 
     def simulate_trajectory(self, predict_force_func: Callable[[Frame, int, Point2D], Acceleration]) -> list[PersonInFrame]:
         trajectory = []
-        person= next(
+        person = next(
             o for o in self.frames[0].frame_objects if isinstance(o, PersonInFrame) and o.id == self.focus_person_id
         )
         for frame_cur_id in range(len(self.frames)):

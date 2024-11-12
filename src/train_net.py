@@ -4,26 +4,26 @@ import datetime
 import re
 import numpy as np
 import torch
-from data.scene_collection import SceneCollection
+from data.scene_dataset import SceneDataset
 from data.trajnet_loader import TrajnetLoader
 from data.torch_dataset import TorchDataset
 from models.neural_net_model import NeuralNetModel
 from data.feature_extractor import FeatureExtractor
 import torchmetrics
+import yaml
+from pathlib import Path
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size", default=64, type=int, help="Batch size.")
-parser.add_argument("--epochs", default=2, type=int, help="Number of epochs.")
-parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
-parser.add_argument("--dataset_type", default='trajnet++', type=str, help="The dataset type.")
+parser.add_argument("--config_path", required=True, type=str, help="Path to the YAML config file.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
-parser.add_argument("--device", default="cpu", type=str, help="Device.")
-parser.add_argument("--lr", default=1e-3, type=float, help="Learning rate")
-parser.add_argument("--interaction_size", default=512, type=int, help="Number of hidden channels.")
-parser.add_argument("--hidden_sizes", default=[1024], type=int, nargs='+', help="List of hidden channel sizes.")
-parser.add_argument("--val_ratio", default=0.2, type=float, help="Train/val data ratio.")
+parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
+parser.add_argument("--load_data_on_demand", action="store_true", help="Whether to load data on demand.")
 
 def main(args: argparse.Namespace) -> None:
+    project_dir = Path(args.config_path).parent.parent.absolute()
+    with open(args.config_path, "r") as file:
+        config = yaml.safe_load(file)
+
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
@@ -35,33 +35,44 @@ def main(args: argparse.Namespace) -> None:
     ))
     os.makedirs(args.logdir, exist_ok=True)
 
-    # load data
-    if args.dataset_type == "trajnet++":
-        loader = TrajnetLoader(args.dataset_path)
-    else:
-        raise ValueError(f"Unknown dataset type: {args.dataset_type}")
+    loaders = {}
+    for dataset in config['datasets']:
+        name = dataset['name']
+        path = (project_dir / dataset["path"]).resolve()
+        dataset_type = dataset["type"]
 
-    scene_collection = SceneCollection([loader])
-    scene_collection_train, scene_collection_val = scene_collection.split(args.val_ratio)
+        if dataset_type == "trajnet++":
+            loaders[name] = TrajnetLoader(path)
+        else:
+            raise ValueError(f"Unknown dataset type: {dataset_type}")
 
-    train_dataset = TorchDataset(scene_collection_train) 
-    val_dataset = TorchDataset(scene_collection_val)
+    scene_collection = SceneDataset(loaders, load_on_demand=args.load_data_on_demand)
+    print('Splitting scenes into train/val...')
+    scene_collection_train, scene_collection_eval = scene_collection.split(config["val_ratio"])
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=TorchDataset.prepare_batch)
-    eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=TorchDataset.prepare_batch)
+    train_dataset = TorchDataset(scene_collection_train, device=args.device) 
+    eval_dataset = TorchDataset(scene_collection_eval, device=args.device)
 
-    model = NeuralNetModel(FeatureExtractor.individual_fts_dim, FeatureExtractor.interaction_fts_dim[1], 
-                           args.interaction_size, args.hidden_sizes, 2)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], collate_fn=train_dataset.prepare_batch)
+    eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=config['batch_size'], collate_fn=eval_dataset.prepare_batch)
+
+    model = NeuralNetModel(
+        FeatureExtractor.individual_fts_dim, 
+        FeatureExtractor.interaction_fts_dim[1], 
+        config['interaction_size'], 
+        config['hidden_sizes'], 
+        output_dim=2
+    )
 
     model.configure(
-        optimizer=torch.optim.Adam(model.parameters(), lr=args.lr),
+        optimizer=torch.optim.Adam(model.parameters(), lr=float(config['learning_rate'])),
         device=args.device,
         logdir=args.logdir,
         metrics={'MAE': torchmetrics.MeanAbsoluteError()},
         loss=torch.nn.MSELoss()
     )
 
-    logs = model.fit(train_loader, dev=eval_loader, epochs=args.epochs, callbacks=[])
+    logs = model.fit(train_loader, dev=eval_loader, epochs=config['epochs'], callbacks=[])
     model.save_weights(os.path.join(args.logdir, 'weights.pth'))
 
 if __name__ == "__main__":

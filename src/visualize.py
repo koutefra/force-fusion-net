@@ -1,6 +1,6 @@
 import argparse
 import numpy as np
-from data.scene_collection import SceneCollection
+from data.scene_dataset import SceneDataset
 from data.trajnet_loader import TrajnetLoader
 from entities.frame_object import PersonInFrame
 from visualization.visualization import Visualizer
@@ -26,12 +26,7 @@ def main(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
-    scene_collection = SceneCollection([loader])
-
-    if len(args.scenes_to_show) == 0:
-        n_scenes = len(scene_collection.scenes.keys())
-        n_samples = min(5, n_scenes)
-        args.scenes_to_show = random.sample(list(scene_collection.scenes.keys()), n_samples)
+    scene_dataset = SceneDataset({"loader_0": loader}, load_on_demand=False)
 
     # load predictor and get predictions
     predictor = None
@@ -45,11 +40,14 @@ def main(args: argparse.Namespace) -> None:
         
     # run visualization
     visualizer = Visualizer()
-    for scene_id in args.scenes_to_show:
-        scene = scene_collection.scenes[scene_id]
-        new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
+    # for scene_id in args.scenes_to_show:
+    for scene_id in range(50, 55):
+        scene = scene_dataset.get_scene("loader_0", scene_id)
 
-        preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
+        preds = []
+        if predictor:
+            new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
+            preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
 
         visualizer.visualize(scene, preds=preds)
 

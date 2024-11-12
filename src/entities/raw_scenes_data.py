@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
-class RawScenes:
+class RawSceneData:
 
     @dataclass(frozen=True)
     class SceneData:
