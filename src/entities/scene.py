@@ -2,25 +2,23 @@ from dataclasses import dataclass
 from entities.vector2d import Point2D, Acceleration, Velocity
 from entities.frame import Frame
 from entities.frame_object import PersonInFrame
-from typing import Callable
 
 @dataclass(frozen=True)
 class Scene:
     id: int
-    focus_person_id: int 
-    focus_person_goal: Point2D
+    focus_person_ids: list[int] 
+    goal_positions: dict[int, Point2D]
     fps: float
     frames: list[Frame]
     tag: list[int]
     dataset: str
-
 
     def calculate_delta_time(self, frame_cur_id: int):
         if frame_cur_id < 1 or frame_cur_id >= len(self.frames):
             raise ValueError(f"Invalid frame index {frame_cur_id}")
         return (self.frames[frame_cur_id].number - self.frames[frame_cur_id - 1].number) / self.fps
 
-    def simulate_trajectory(self, predict_force_func: Callable[[Frame, int, Point2D], Acceleration]) -> list[PersonInFrame]:
+    def simulate_trajectory(self, predict_force_func: callable[[Frame, int, Point2D], Acceleration]) -> list[PersonInFrame]:
         trajectory = []
         person = next(
             o for o in self.frames[0].frame_objects if isinstance(o, PersonInFrame) and o.id == self.focus_person_id

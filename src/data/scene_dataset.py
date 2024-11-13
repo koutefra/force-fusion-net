@@ -2,7 +2,7 @@ import random
 from data.base_loader import BaseLoader 
 from entities.scene import Scene, Scenes
 from data.feature_extractor import FeatureExtractor
-from data.processing_strategy import ProcessingStrategy, EagerProcessor, LazyProcessor
+from data.processor import ProcessingStrategy, EagerProcessor, LazyProcessor
 from collections import defaultdict
 
 class SceneDataset:

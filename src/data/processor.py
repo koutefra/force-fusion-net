@@ -3,7 +3,7 @@ from data.base_loader import BaseLoader
 from entities.scene import Scene, Scenes
 from data.raw_scenes_processor import RawScenesProcessor
 
-class ProcessingStrategy(ABC):
+class BaseProcessor(ABC):
     def __init__(
         self, 
         loaders: dict[str, BaseLoader], 
