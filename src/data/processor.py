@@ -115,7 +115,7 @@ class EagerProcessor(BaseProcessor):
         self, 
         loaders: dict[str, BaseLoader], 
         parser: Parser,
-        disabled_scene_ids: dict[str, set[int]] = None,
+        disabled_scene_ids: dict[str, set[int]] = {},
     ):
         super().__init__(loaders, parser, disabled_scene_ids)
         self._cache = self._fetch_all_scenes()

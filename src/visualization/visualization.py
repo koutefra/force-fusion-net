@@ -107,7 +107,7 @@ class Visualizer:
         for frame_id, frame in enumerate(scene.frames):
             frame_pred_objects_and_colors = [(x[1][frame_id], x[2]) for x in preds]  # list[tuple[PersonInFrame, color]]
             frame_objects_and_colors = [
-                (o, self.other_person_color) if not isinstance(o, PersonInFrame) or o.id != scene.focus_person_id 
+                (o, self.other_person_color) if not isinstance(o, PersonInFrame) # or o.id != scene.focus_person_id 
                 else (o, self.focus_person_color)
                 for o in frame.frame_objects
             ]
@@ -120,19 +120,19 @@ class Visualizer:
                 scaled_position = (person.position - min_pos) * spatial_scale
                 pygame.draw.circle(screen, color, scaled_position.to_tuple(), self.circle_radius)
 
-                if person.id == scene.focus_person_id:
-                    # draw the goal position
-                    scaled_goal_position = (scene.focus_person_goal - min_pos) * spatial_scale
-                    pygame.draw.rect(
-                        screen, color, 
-                        pygame.Rect(
-                            (scaled_goal_position - self.circle_radius).to_tuple(),
-                            (self.circle_radius * 2, self.circle_radius * 2)
-                        )
-                    )
+                # if person.id == scene.focus_person_id:
+                #     # draw the goal position
+                #     scaled_goal_position = (scene.focus_person_goal - min_pos) * spatial_scale
+                #     pygame.draw.rect(
+                #         screen, color, 
+                #         pygame.Rect(
+                #             (scaled_goal_position - self.circle_radius).to_tuple(),
+                #             (self.circle_radius * 2, self.circle_radius * 2)
+                #         )
+                #     )
 
-                scaled_velocity = (person.velocity * spatial_scale * time_scale)
-                scaled_acceleration = (person.acceleration * spatial_scale * (time_scale ** 2))
+                scaled_velocity = 0.5 * (person.velocity * spatial_scale * time_scale)
+                scaled_acceleration = 0.5 * (person.acceleration * spatial_scale * (time_scale ** 2))
 
                 # draw velocity and acceleration vectors
                 vectors = [

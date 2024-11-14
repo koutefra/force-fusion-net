@@ -94,7 +94,7 @@ class Parser:
 
     @staticmethod
     def trajectories_to_frames(scene_trajectories: RawSceneTrajectories) -> list[Frame]:
-        frame_person_dict = defaultdict(lambda: defaultdict(list))
+        frame_person_dict = defaultdict(list)
         for person_id, frames in scene_trajectories.items():
             for frame_number in frames.keys():
                 frame_person_dict[frame_number].append(person_id)
@@ -135,7 +135,7 @@ class Parser:
             for frame_id, frame_number in enumerate(person_trajectory.keys()):
                 window_frame_ids = list(range(max(0, frame_id - self.fdm_win_size + 1), frame_id + 1))
                 window = [
-                    getattr(person_trajectory[fid], in_prop) 
+                    getattr(person_trajectory[frame_numbers[fid]], in_prop) 
                     for fid in window_frame_ids
                     if frame_numbers[fid] in person_trajectory
                 ]
@@ -152,12 +152,12 @@ class Parser:
 
         # Compute velocities and accelerations
         for person_trajectory in tqdm(
-            trajectories.person_trajectories.values(), 
+            trajectories.values(), 
             desc=f"[dataset_name={dataset_name}] Computing velocities and accelerations...", 
             disable=not self.print_progress):
-            person_trajectory.frames = dict(sorted(person_trajectory.frames.items()))
-            compute_fdm_property(person_trajectory.frames, "position", "velocity")
-            compute_fdm_property(person_trajectory.frames, "velocity", "acceleration")
+            person_trajectory = dict(sorted(person_trajectory.items()))
+            compute_fdm_property(person_trajectory, "position", "velocity")
+            compute_fdm_property(person_trajectory, "velocity", "acceleration")
 
         return trajectories
 

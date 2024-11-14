@@ -1,6 +1,6 @@
 import json
 from data.loaders.base_loader import BaseLoader
-from entities.raw_data import RawDataCollection, RawSceneData, RawTrackData
+from entities.raw_data import RawDataCollection, RawSceneData, RawPersonTrackData
 from entities.vector2d import Point2D
 from typing import Optional, Any
 
@@ -16,7 +16,7 @@ class TrajnetLoader(BaseLoader):
         path: str, 
         dataset_name: str,
         scene_ids: Optional[set[int]]
-    ) -> tuple[list[RawSceneData], list[RawTrackData]]:
+    ) -> tuple[list[RawSceneData], list[RawPersonTrackData]]:
         scenes = []
         tracks = []
         with open(path, 'r') as file:
@@ -47,8 +47,8 @@ class TrajnetLoader(BaseLoader):
         scene = data['scene']
         return RawSceneData(
             id=scene['id'],
-            focus_person_id=[scene['p']],
             goal_positions={},
+            obstacles=[],
             start_frame_number=scene['s'],
             end_frame_number=scene['e'],
             fps=scene['fps'],
@@ -57,12 +57,11 @@ class TrajnetLoader(BaseLoader):
         )
 
     @staticmethod
-    def parse_track(data: dict[Any]) -> RawTrackData:
-        """Parse track data and return a RawTrackData instance."""
+    def parse_track(data: dict[Any]) -> RawPersonTrackData:
+        """Parse track data and return a RawPersonTrackData instance."""
         track = data['track']
-        return RawTrackData(
+        return RawPersonTrackData(
             frame_number=track['f'],
-            object_id=track['p'],
-            type="person",
+            person_id=track['p'],
             position=Point2D(x=track['x'], y=track['y'])
         )

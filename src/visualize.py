@@ -31,7 +31,7 @@ def main(args: argparse.Namespace) -> None:
     elif args.dataset_type == "juelich":
         dataset_name = 'juelich'
         loader = JuelichLoader(args.dataset_path, dataset_name)
-        parser = Parser(goal_position_fill_method=None, fdm_win_size=4)
+        parser = Parser(goal_position_fill_method=None, fdm_win_size=20)
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
@@ -55,11 +55,11 @@ def main(args: argparse.Namespace) -> None:
         scene = scene_dataset.get_scene(dataset_name, scene_id)
 
         preds = []
-        if predictor:
-            new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
-            preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
+        # if predictor:
+            # new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
+            # preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
 
-        visualizer.visualize(scene, preds=preds)
+        visualizer.visualize(scene, time_scale=1.0, preds=preds)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))
