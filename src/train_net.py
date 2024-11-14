@@ -5,7 +5,7 @@ import re
 import numpy as np
 import torch
 from data.scene_dataset import SceneDataset
-from data.trajnet_loader import TrajnetLoader
+from data.loaders.trajnet_loader import TrajnetLoader
 from data.torch_dataset import TorchDataset
 from models.neural_net_model import NeuralNetModel
 from data.feature_extractor import FeatureExtractor

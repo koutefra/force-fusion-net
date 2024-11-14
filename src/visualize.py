@@ -1,8 +1,10 @@
 import argparse
 import numpy as np
 from data.scene_dataset import SceneDataset
-from data.trajnet_loader import TrajnetLoader
-from entities.frame_object import PersonInFrame
+from data.loaders.trajnet_loader import TrajnetLoader
+from data.loaders.juelich_loader import JuelichLoader 
+from data.parser import Parser
+from data.feature_extractor import FeatureExtractor
 from visualization.visualization import Visualizer
 from models.neural_net_predictor import NeuralNetPredictor
 from models.social_force_predictor import SocialForcePredictor
@@ -10,10 +12,10 @@ import random
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
-parser.add_argument("--dataset_type", default='trajnet++', type=str, help="The dataset type.")
+parser.add_argument("--dataset_type", required=True, type=str, help="The dataset type.")
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
 parser.add_argument("--predictor_type",  type=str, help="The trained model type.")
-parser.add_argument("--scenes_to_show", required=False, default=[], nargs='*', type=str, help="IDs of scenes to visualize. If None, random scenes are selected.")
+parser.add_argument("--scenes_to_show", default=[1], nargs='*', type=int, help="IDs of scenes to visualize. If None, random scenes are selected.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 
 def main(args: argparse.Namespace) -> None:
@@ -21,14 +23,23 @@ def main(args: argparse.Namespace) -> None:
     random.seed(args.seed)
 
     # load data
+    loaders = {}
     if args.dataset_type == "trajnet++":
-        loader = TrajnetLoader(args.dataset_path)
+        dataset_name = 'trajnet++'
+        loader = TrajnetLoader(args.dataset_path, dataset_name)
+        parser = Parser()
+    elif args.dataset_type == "juelich":
+        dataset_name = 'juelich'
+        loader = JuelichLoader(args.dataset_path, dataset_name)
+        parser = Parser(goal_position_fill_method=None, fdm_win_size=4)
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
-    scene_dataset = SceneDataset({"loader_0": loader}, load_on_demand=False)
+    loaders[dataset_name] = loader
+    feature_extractor = FeatureExtractor()
+    scene_dataset = SceneDataset(loaders, parser, feature_extractor, load_on_demand=False)
 
-    # load predictor and get predictions
+    # load predictor
     predictor = None
     if args.predictor_path:
         if args.predictor_type == 'neural_net':
@@ -40,9 +51,8 @@ def main(args: argparse.Namespace) -> None:
         
     # run visualization
     visualizer = Visualizer()
-    # for scene_id in args.scenes_to_show:
-    for scene_id in range(50, 55):
-        scene = scene_dataset.get_scene("loader_0", scene_id)
+    for scene_id in args.scenes_to_show:
+        scene = scene_dataset.get_scene(dataset_name, scene_id)
 
         preds = []
         if predictor:

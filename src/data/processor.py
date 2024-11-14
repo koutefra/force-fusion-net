@@ -1,15 +1,18 @@
+import copy
 from abc import ABC, abstractmethod
-from data.base_loader import BaseLoader
+from data.loaders.base_loader import BaseLoader
 from entities.scene import Scene, Scenes
-from data.raw_scenes_processor import RawScenesProcessor
+from data.parser import Parser 
 
 class BaseProcessor(ABC):
     def __init__(
         self, 
         loaders: dict[str, BaseLoader], 
+        parser: Parser,
         disabled_scene_ids: dict[str, list[int]] = {}
     ):
         self.loaders = loaders
+        self.parser = parser
         self.disabled_scene_ids = {key: set(value) for key, value in disabled_scene_ids.items()}
 
     @abstractmethod
@@ -21,7 +24,7 @@ class BaseProcessor(ABC):
         pass
 
     @abstractmethod
-    def filter_scenes(self, ids: dict[str, list[int]]) -> "ProcessingStrategy":
+    def filter_scenes(self, ids: dict[str, list[int]]) -> "BaseProcessor":
         pass
 
     @abstractmethod
@@ -41,8 +44,8 @@ class BaseProcessor(ABC):
         pass
 
     def _fetch_loader_scenes(self, loader_name: str) -> Scenes:
-        raw_scenes = self.loaders[loader_name].load_all_scenes()
-        scenes = RawScenesProcessor.process_raw_scenes(raw_scenes, loader_name)
+        raw_data = self.loaders[loader_name].load_all_scenes()
+        scenes = self.parser.convert_to_scenes(raw_data)
         return {
             scene_id: scene 
             for scene_id, scene in scenes.items()
@@ -58,12 +61,12 @@ class BaseProcessor(ABC):
             all_scenes[loader_name].update(scenes)
         return all_scenes
 
-class LazyProcessor(ProcessingStrategy):
+class LazyProcessor(BaseProcessor):
     def get_scene(self, loader_name: str, scene_id: int) -> Scene:
         if scene_id in self.disabled_scene_ids.get(loader_name, set()):
             raise ValueError(f"Key {(loader_name, scene_id)} disabled!")
-        raw_scene = self.loaders[loader_name].load_scene_by_id(scene_id)
-        return RawScenesProcessor.process_raw_scenes(raw_scene, loader_name).get(scene_id)
+        raw_data = self.loaders[loader_name].load_scene_by_id(scene_id)
+        return self.parser.convert_to_scenes(raw_data).get(scene_id)
 
     def get_scenes(self, ids: dict[str, list[int]]) -> dict[str, Scenes]:
         all_scenes = {}
@@ -72,8 +75,8 @@ class LazyProcessor(ProcessingStrategy):
                 scene_id for scene_id in scene_ids 
                 if (loader_name, scene_id) not in self.disabled_scene_ids
             }
-            raw_scenes = self.loaders[loader_name].load_scenes_by_ids(valid_scene_ids)
-            scenes = RawScenesProcessor.process_raw_scenes(raw_scenes, loader_name)
+            raw_data = self.loaders[loader_name].load_scenes_by_ids(valid_scene_ids)
+            scenes = self.parser.convert_to_scenes(raw_data, loader_name)
             all_scenes[loader_name] = scenes
         return all_scenes
 
@@ -96,7 +99,7 @@ class LazyProcessor(ProcessingStrategy):
         raw_scenes = self.loaders[loader_name].load_all_scenes()
         return {
             scene_id: scene_len
-            for scene_id, scene_len in RawScenesProcessor.get_scene_lengths(raw_scenes).items()
+            for scene_id, scene_len in self.parser.get_frame_counts(raw_scenes).items()
             if scene_id not in self.disabled_scene_ids.get(loader_name, set())
         }
 
@@ -107,15 +110,15 @@ class LazyProcessor(ProcessingStrategy):
             lengths[loader_name] = scene_lengths
         return lengths
 
-class EagerProcessor(ProcessingStrategy):
+class EagerProcessor(BaseProcessor):
     def __init__(
         self, 
-        loaders: dict[str, BaseLoader] = None, 
+        loaders: dict[str, BaseLoader], 
+        parser: Parser,
         disabled_scene_ids: dict[str, set[int]] = None,
-        scenes: dict[str, dict[int, Scene]] = None
     ):
-        super().__init__(loaders or {}, disabled_scene_ids or {})
-        self._cache = scenes if scenes is not None else self._fetch_all_scenes()
+        super().__init__(loaders, parser, disabled_scene_ids)
+        self._cache = self._fetch_all_scenes()
 
     def get_scene(self, loader_name: str, scene_id: int) -> Scene:
         if (loader_name, scene_id) in self.disabled_scene_ids:
@@ -137,22 +140,19 @@ class EagerProcessor(ProcessingStrategy):
         return all_scenes
 
     def filter_scenes(self, ids: dict[str, list[int]]) -> "EagerProcessor":
-        ids = {loader_name: set(scene_ids) for loader_name, scene_ids in ids.items()}
+        filtered_processor = copy.deepcopy(self)
         filtered_cache = {}
-        for loader_name, scenes in self._cache.items():
-            if loader_name not in ids:
-                continue
-
-            valid_scene_ids = ids[loader_name]
-            disabled_scene_ids = self.disabled_scene_ids.get(loader_name, set())
-            filtered_scenes = {
-                scene_id: scene
-                for scene_id, scene in scenes.items()
-                if scene_id in valid_scene_ids and scene_id not in disabled_scene_ids
-            }
-            if filtered_scenes:
-                filtered_cache[loader_name] = filtered_scenes
-        return EagerProcessor(scenes=filtered_cache, disabled_scene_ids=self.disabled_scene_ids)
+        for dataset_name, scene_dict in self._cache.items():
+            if dataset_name in ids:
+                filtered_cache[dataset_name] = {
+                    scene_id: scene
+                    for scene_id, scene in scene_dict.items()
+                    if scene_id in ids[dataset_name]
+                }
+            else:
+                filtered_cache[dataset_name] = scene_dict
+        filtered_processor._cache = filtered_cache
+        return filtered_processor
 
     def get_loader_scenes(self, loader_name: str) -> Scenes:
         return {

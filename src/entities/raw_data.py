@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional
 from entities.vector2d import Point2D, Velocity, Acceleration
 
 class RawSceneData:
@@ -12,7 +12,7 @@ class RawSceneData:
 
 class RawTrackData:
     frame_number: int
-    id: int
+    object_id: int
     type: str
     position: Point2D
     velocity: Optional[Velocity]
@@ -26,7 +26,7 @@ class RawDataCollection:
         scenes: list[RawSceneData],
         dataset_name: str,
         tracks: Optional[list[RawTrackData]] = None,
-        trajectories: Optional[dict[int, RawSceneTrajectories]] = None
+        trajectories: Optional[dict[int, RawSceneTrajectories]] = None,
     ):
         if not tracks and not trajectories:
             raise ValueError("Must provide either tracks or trajectories")

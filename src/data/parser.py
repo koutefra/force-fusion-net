@@ -10,14 +10,12 @@ from typing import Optional
 class Parser:
     def __init__(
         self,
-        dataset_name: str,
         goal_position_fill_method: Optional[str] = "last_position",
         nan_strategy: str = "zero",
         fdm_type: str = "backward",
         fdm_win_size: int = 2,
         print_progress: bool = True
     ):
-        self.dataset_name = dataset_name
         self.goal_position_fill_method = goal_position_fill_method
         self.nan_strategy = nan_strategy
         self.fdm_type = fdm_type
@@ -76,6 +74,24 @@ class Parser:
             dataset=dataset_name
         )
 
+    def get_frame_counts(self, data: RawDataCollection) -> dict[int, int]:
+        scene_lengths = {}
+        if data.tracks:
+            data_paired = self.assign_tracks_to_scenes(data, dataset_name=data.dataset_name)
+            if data.trajectories:
+                raise ValueError("Expected data.trajectories to be None")
+
+            for scene_id, frames in data_paired.items():
+                scene_lengths[scene_id] = len(frames)
+
+        elif data.trajectories:
+            for scene_id, persons in data.trajectories.items():
+                scene_frame_numbers = set()
+                for frames in persons.values():
+                    scene_frame_numbers.update(frames.keys())
+                scene_lengths[scene_id] = len(scene_frame_numbers)
+        return scene_lengths
+
     @staticmethod
     def trajectories_to_frames(scene_trajectories: RawSceneTrajectories) -> list[Frame]:
         frame_person_dict = defaultdict(lambda: defaultdict(list))
@@ -89,7 +105,7 @@ class Parser:
             for person_id in person_ids:
                 track = scene_trajectories[person_id][frame_number]
                 frame_object = PersonInFrame(
-                    id=track.id,
+                    id=track.object_id,
                     position=track.position,
                     velocity=track.velocity,
                     acceleration=track.acceleration
@@ -148,7 +164,7 @@ class Parser:
     def assign_tracks_to_scenes(
         self,
         data: RawDataCollection,
-        dataset_name: str
+        dataset_name: str = None
     ) -> dict[int, dict[int, dict[int, RawTrackData]]]:
         tracks_for_scenes = defaultdict(lambda: defaultdict(dict))
         
@@ -158,13 +174,12 @@ class Parser:
             for frame in range(scene.start_frame_number, scene.end_frame_number + 1):
                 frame_to_scene_ids[frame].append(scene.id)
 
-        for track in tqdm(
-            data.tracks, 
-            desc=f'[dataset_name={dataset_name}] Associating tracks with scenes...', 
-            disable=not self.print_progress):
+        desc = f"[dataset_name={dataset_name}] Associating tracks with scenes..." \
+            if dataset_name is not None else "Associating tracks with scenes..."
+        for track in tqdm(data.tracks, desc=desc, disable=not self.print_progress):
             relevant_scene_ids = frame_to_scene_ids.get(track.frame_number, [])
             for scene_id in relevant_scene_ids:
-                tracks_for_scenes[scene_id][track.frame_number].setdefault(track.id, track)
+                tracks_for_scenes[scene_id][track.frame_number].setdefault(track.object_id, track)
 
         return tracks_for_scenes
 

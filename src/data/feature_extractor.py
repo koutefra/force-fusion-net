@@ -1,50 +1,68 @@
 from entities.scene import Scene
 from entities.vector2d import Point2D
 from entities.frame_object import PersonInFrame, FrameObject
+from entities.scene_features import DatapointFeatures, SceneFeatures
 from tqdm import tqdm
 
 class FeatureExtractor:
-    individual_fts_dim = 8
-    interaction_fts_dim = (None, 5)
+    INDIVIDUAL_FTS_DIM = 8
+    INTERACTION_FTS_DIM = (None, 5)
+
+    def __init__(self, print_progress: bool = True):
+        self.print_progress = print_progress
             
-    @staticmethod
     def extract_all_scenes_features(
-        scenes: dict[int, Scene],
-        print_progress: bool = True
-    ) -> dict[int, list[tuple[dict[str, float], list[dict[str, float]]]]]:
+        self,
+        scenes: dict[int, Scene]
+    ) -> dict[int, SceneFeatures]: 
         scenes_features = {}
-        for scene_id, scene in tqdm(scenes.items(), desc="Extracting features from scenes", disable=not print_progress):
-            scenes_features[scene_id] = FeatureExtractor.extract_scene_features(scene)
+        for scene_id, scene in tqdm(
+            scenes.items(), 
+            desc=f"[dataset_name={getattr(scene, 'dataset')}] Extracting features from scenes", 
+            disable=not self.print_progress
+            ):
+            scenes_features[scene_id] = self.extract_scene_features(scene)
         return scenes_features
 
-    @staticmethod
-    def extract_scene_features(scene: Scene) -> list[tuple[dict[str, float], list[dict[str, float]]]]:
+    def extract_scene_features(self, scene: Scene) -> SceneFeatures:
         frames_features = []
-        person_id = scene.focus_person_id
-        goal_pos = scene.focus_person_goal
         for frame in scene.frames:
-            frame_features = FeatureExtractor.extract_frame_features(
-                person_id, 
+            frame_features = self.extract_frame_features(
+                scene.focus_person_ids, 
                 frame.frame_objects, 
-                goal_pos
+                scene.goal_positions
             )
-            frames_features.append(frame_features)
+            frames_features.update(frame_features)
         return frames_features
 
-    @staticmethod
-    def extract_frame_features(person_id: int, frame_objs: list[FrameObject], goal_pos: Point2D) -> tuple[dict[str, float], list[dict[str, float]]]:
-        person = next((obj for obj in frame_objs if isinstance(obj, PersonInFrame) and obj.id == person_id), None)
-        
-        if person is None:
-            raise ValueError(f"Person with ID {person_id} not found in frame objects.")
-        
-        individual_features = FeatureExtractor.get_individual_features(
-            person, 
-            goal_pos
-        )
-        interaction_features = FeatureExtractor.get_interaction_features(person, frame_objs)
-        
-        return individual_features, interaction_features
+    def extract_frame_features(
+        self,
+        focus_person_ids: list[int], 
+        frame_objs: list[FrameObject], 
+        goal_positions: dict[int, Point2D]
+    ) -> list[DatapointFeatures]:
+        frame_features = []
+        for focus_person_id in focus_person_ids:
+            focus_person_in_frame = next(
+                (o for o in frame_objs if isinstance(o, PersonInFrame) and o.id == focus_person_id), None
+            )
+            
+            if focus_person_in_frame is None:
+                continue
+            
+            individual_features = self.get_individual_features(
+                focus_person_in_frame, 
+                goal_positions[focus_person_id] 
+            )
+            interaction_features = self.get_interaction_features(focus_person_in_frame, frame_objs)
+            focus_person_features = (
+                DatapointFeatures(
+                    individual_features=individual_features,
+                    interaction_features=interaction_features
+                )
+            )
+            frame_features.append(focus_person_features)
+        return frame_features
 
     @staticmethod
     def get_individual_features(person: PersonInFrame, goal_pos: Point2D) -> dict[str, float]:

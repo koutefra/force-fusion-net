@@ -7,7 +7,7 @@ import numpy as np
 import logging
 from tqdm import tqdm
 from data.scene_dataset import SceneCollection
-from data.trajnet_loader import TrajnetLoader
+from data.loaders.trajnet_loader import TrajnetLoader
 from entities.frame_object import PersonInFrame
 from models.social_force_model import SocialForceModel
 from entities.vector2d import Acceleration
