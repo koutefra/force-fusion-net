@@ -1,55 +1,85 @@
 import torch
 from data.scene_dataset import SceneDataset
+from data.feature_extractor import FeatureExtractor
 from torch.nn.utils.rnn import pad_sequence
+import random
+from typing import Optional
 
-class TorchDataset(torch.utils.data.Dataset):
-    def __init__(self, scene_dataset: SceneDataset, device: torch.device = torch.device('cpu')):
+class TorchSceneDataset(torch.utils.data.Dataset):
+    def __init__(
+        self, 
+        scene_dataset: SceneDataset, 
+        feature_extractor: FeatureExtractor,
+        device: torch.device = torch.device('cpu')
+    ):
         self.scene_dataset = scene_dataset
-        self.ids = scene_dataset.get_ids()
+        self.feature_extractor = feature_extractor
+        self.scene_ids = scene_dataset.get_all_scene_ids()
+        self.scene_ids_list = list(self.scene_ids.items())
         self.device = device
 
     def __len__(self) -> int:
-        return len(self.ids)
+        return len(self.scene_ids)
 
-    def __getitem__(self, idx: int) -> tuple[str, int, int]:
-        return self.ids[idx]
+    def __getitem__(
+        self, 
+        idx: int
+    ) -> Optional[tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]:
+        loader_name, scene_ids = self.scene_ids_list[idx]
+        if not scene_ids:
+            return None
+        return self._get_features_and_label_for_id(loader_name, random.choice(scene_ids))
 
     def prepare_batch(
         self, 
-        ids: list[tuple[str, int, int]]
-    ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-        raw_data = self.scene_dataset.get_frame_features_from_ids(ids)
-        processed_data = [self.process_datapoint(x) for x in raw_data]
+        data: list[tuple[str, int]]
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+        data = [item for item in data if item is not None]
 
-        input, output = zip(*processed_data)
-        x_individual, x_interaction = zip(*input)
-        x_individual_stack = torch.stack(x_individual)
-        x_interaction_stack = pad_sequence(x_interaction, batch_first=True)
-        output_stack = torch.stack(output).float()
-        return (x_individual_stack, x_interaction_stack), output_stack
+        if not data:
+            raise ValueError("No valid data found for the provided IDs.")
 
-    def process_datapoint(
+        input_features, labels = zip(*data)
+        x_individual, x_interaction, x_obstacle = zip(*input_features)
+
+        x_individual_stack = torch.stack(x_individual).to(self.device)
+        x_interaction_stack = pad_sequence(x_interaction, batch_first=True).to(self.device)
+        x_obstacle_stack = pad_sequence(x_obstacle, batch_first=True).to(self.device)
+        labels_stack = torch.stack(labels).float().to(self.device)
+        return (x_individual_stack, x_interaction_stack, x_obstacle_stack), labels_stack
+
+    def _get_features_and_label_for_id(
         self,
-        raw_datapoint: tuple[dict[str, float], list[dict[str, float]]]
-    ) -> tuple[tuple[list[float], list[list[float]]], tuple[float, float]]:
-        individual_feature_dict, interaction_list = raw_datapoint
-        
-        x_individual = [
-            value for key, value in individual_feature_dict.items() 
-            if key not in {"acceleration_x", "acceleration_y"}
-        ]
-        x_interaction = [
-            [value for key, value in interaction_dict.items() if key not in {"acceleration_x", "acceleration_y"}]
-            for interaction_dict in interaction_list
-        ]
-        y_acceleration = torch.tensor(
-            [individual_feature_dict["acceleration_x"], individual_feature_dict["acceleration_y"]], 
-            dtype=torch.float32, 
-            device=self.device
-        )
+        loader_name: str,
+        scene_id: int
+    ) -> Optional[tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]:
+        scene = self.scene_dataset.get_scene(loader_name, scene_id)
+        if not scene:
+            return None
 
-        x_individual_ts = torch.tensor(x_individual, dtype=torch.float32, device=self.device)
-        x_interaction_ts = (
-            torch.tensor(x_interaction, dtype=torch.float32, device=self.device) if x_interaction else torch.empty(0, device=self.device)
+        frame_numbers = list(scene.frames.keys())
+        frame_id = random.randint(0, len(frame_numbers) - 2)
+
+        persons_in_frame = scene.frames[frame_numbers[frame_id]].persons
+        persons_in_next_frame = scene.frames[frame_numbers[frame_id + 1]].persons
+        common_person_ids = set(persons_in_frame.keys()) & set(persons_in_next_frame.keys())
+
+        if not common_person_ids:
+            return None
+
+        selected_person_id = random.choice(list(common_person_ids))
+        person_cur_frame = persons_in_frame[selected_person_id]
+        person_next_frame = persons_in_next_frame[selected_person_id]
+        features = self.feature_extractor.extract_person_in_frame_features(
+            person_id=selected_person_id,
+            frame=scene.frames[frame_numbers[frame_id]],
+            obstacles=scene.obstacles,
+            goal=scene.persons[selected_person_id].goal
         )
-        return (x_individual_ts, x_interaction_ts), y_acceleration
+        position_change = person_next_frame.position - person_cur_frame.position
+        individual_tensor, interaction_tensor, obstacle_tensor = features.to_tensor()
+        label = torch.tensor([
+            position_change.x,
+            position_change.y
+        ], dtype=torch.float32).to(self.device)
+        return (individual_tensor, interaction_tensor, obstacle_tensor), label

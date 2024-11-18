@@ -1,7 +1,6 @@
 from entities.vector2d import Point2D, Velocity, Acceleration 
 from entities.scene import Scene
-from entities.frame_object import FrameObject, PersonInFrame
-from entities.frame import Frame
+from entities.frame import Frame, PersonInFrame
 from sklearn.model_selection import ParameterGrid
 import math
 
@@ -33,7 +32,7 @@ class SocialForceModel:
         interaction_acceleration = direction.normalize() * force_magnitude
         return Acceleration(interaction_acceleration.x, interaction_acceleration.y)
 
-    def _compute_interaction_forces(self, person: PersonInFrame, frame_objs: list[FrameObject]) -> Acceleration:
+    def _compute_interaction_forces(self, person: PersonInFrame, frame_objs: list[PersonInFrame]) -> Acceleration:
         """Compute the sum of interaction forces from all other pedestrians."""
         total_interaction_force_x = 0.0
         total_interaction_force_y = 0.0

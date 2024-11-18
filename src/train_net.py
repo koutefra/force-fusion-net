@@ -5,13 +5,17 @@ import re
 import numpy as np
 import torch
 from data.scene_dataset import SceneDataset
+from data.data_processor import EagerProcessor, LazyProcessor
 from data.loaders.trajnet_loader import TrajnetLoader
-from data.torch_dataset import TorchDataset
+from data.loaders.juelich_bneck_loader import JuelichBneckLoader
+from data.torch_dataset import TorchSceneDataset
 from models.neural_net_model import NeuralNetModel
 from data.feature_extractor import FeatureExtractor
+from entities.features import IndividualFeatures, InteractionFeatures, ObstacleFeatures
 import torchmetrics
 import yaml
 from pathlib import Path
+from data.fdm_calculator import FiniteDifferenceCalculator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", required=True, type=str, help="Path to the YAML config file.")
@@ -42,24 +46,35 @@ def main(args: argparse.Namespace) -> None:
         dataset_type = dataset["type"]
 
         if dataset_type == "trajnet++":
-            loaders[name] = TrajnetLoader(path)
+            fdm_calculator = FiniteDifferenceCalculator(win_size=2)
+            loaders[name] = TrajnetLoader(path, name, fdm_calculator)
+        elif dataset_type == "juelich_bneck":
+            fdm_calculator = FiniteDifferenceCalculator(win_size=20)
+            loaders[name] = JuelichBneckLoader(path, name, fdm_calculator)
         else:
             raise ValueError(f"Unknown dataset type: {dataset_type}")
 
-    scene_collection = SceneDataset(loaders, load_on_demand=args.load_data_on_demand)
+    if args.load_data_on_demand:
+        processor = LazyProcessor(loaders)
+    else:
+        processor = EagerProcessor(loaders)
+    scene_collection = SceneDataset(processor)
     print('Splitting scenes into train/val...')
     scene_collection_train, scene_collection_eval = scene_collection.split(config["val_ratio"])
 
-    train_dataset = TorchDataset(scene_collection_train, device=args.device) 
-    eval_dataset = TorchDataset(scene_collection_eval, device=args.device)
+    feature_extractor = FeatureExtractor(print_progress=False)
+    train_dataset = TorchSceneDataset(scene_collection_train, device=args.device, feature_extractor=feature_extractor) 
+    eval_dataset = TorchSceneDataset(scene_collection_eval, device=args.device, feature_extractor=feature_extractor)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], collate_fn=train_dataset.prepare_batch)
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=config['batch_size'], collate_fn=eval_dataset.prepare_batch)
 
     model = NeuralNetModel(
-        FeatureExtractor.individual_fts_dim, 
-        FeatureExtractor.interaction_fts_dim[1], 
-        config['interaction_size'], 
+        IndividualFeatures.dim(), 
+        InteractionFeatures.dim(), 
+        ObstacleFeatures.dim(),
+        config['interaction_out_dim'], 
+        config['obstacle_out_dim'], 
         config['hidden_sizes'], 
         output_dim=2
     )

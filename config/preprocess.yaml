@@ -1,0 +1,134 @@
+test_ratio: 0.2
+save_format: "json"  # or "pickle"
+  output_path: "./data/preprocessed"
+
+datasets:
+  # juelich_bneck
+  - name: "b090"
+    input_path: "./data/datasets/juelich/bottleneck/b090.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b100"
+    input_path: "./data/datasets/juelich/bottleneck/b100.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b120"
+    input_path: "./data/datasets/juelich/bottleneck/b110.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b120"
+    input_path: "./data/datasets/juelich/bottleneck/b120.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b140"
+    input_path: "./data/datasets/juelich/bottleneck/b140.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b160"
+    input_path: "./data/datasets/juelich/bottleneck/b160.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b180"
+    input_path: "./data/datasets/juelich/bottleneck/b180.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b200"
+    input_path: "./data/datasets/juelich/bottleneck/b200.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b220"
+    input_path: "./data/datasets/juelich/bottleneck/b220.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "b250"
+    input_path: "./data/datasets/juelich/bottleneck/b250.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "l0"
+    input_path: "./data/datasets/juelich/bottleneck/l0.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "l2"
+    input_path: "./data/datasets/juelich/bottleneck/l2.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  - name: "l4"
+    input_path: "./data/datasets/juelich/bottleneck/l4.txt"
+    type: "juelich_bneck"
+    compute_fdm: true
+    fdm_settings:
+      fdm_window_size: 20
+  # trajnet++/train/real_data
+  # - name: "biwi_hotel"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/biwi_hotel.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_06"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_06.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_07"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_07.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_08"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_08.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_09"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_09.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_10"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_10.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_12"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_12.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_13"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_13.ndjson"
+  #   type: "trajnet++"
+  # - name: "cff_14"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/cff_14.ndjson"
+  #   type: "trajnet++"
+  # - name: "crowds_students001"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/crowds_students001.ndjson"
+  #   type: "trajnet++"
+  # - name: "crowds_students003"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/crowds_students003.ndjson"
+  #   type: "trajnet++"
+  # - name: "crowds_zara01"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/crowds_zara01.ndjson"
+  #   type: "trajnet++"
+  # - name: "crowds_zara03"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/crowds_zara03.ndjson"
+  #   type: "trajnet++"
+  # - name: "lcas"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/lcas.ndjson"
+  #   type: "trajnet++"
+  # - name: "wildtrack"
+  #   input_path: "./data/datasets/trajnet++/train/real_data/wildtrack.ndjson"
+  #   type: "trajnet++"
+  # trajnet++/train/synth_data
+  # - name: "orca_synth"
+  #   input_path: "./data/datasets/trajnet++/train/synth_data/orca_synth.ndjson"
+  #   type: "trajnet++"

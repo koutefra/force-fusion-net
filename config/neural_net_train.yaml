@@ -1,15 +1,56 @@
-batch_size: 512
-epochs: 2
+batch_size: 1024
+epochs: 10000
 learning_rate: 1e-3
-interaction_size: 512
+interaction_out_dim: 512
+obstacle_out_dim: 512
 hidden_sizes: [1024]
 val_ratio: 0.2
 
 datasets:
+  # juelich_bneck
+  - name: "b090"
+    path: "./data/datasets/juelich/bottleneck/b090.txt"
+    type: "juelich_bneck"
+  - name: "b100"
+    path: "./data/datasets/juelich/bottleneck/b100.txt"
+    type: "juelich_bneck"
+  - name: "b120"
+    path: "./data/datasets/juelich/bottleneck/b110.txt"
+    type: "juelich_bneck"
+  - name: "b120"
+    path: "./data/datasets/juelich/bottleneck/b120.txt"
+    type: "juelich_bneck"
+  - name: "b140"
+    path: "./data/datasets/juelich/bottleneck/b140.txt"
+    type: "juelich_bneck"
+  - name: "b160"
+    path: "./data/datasets/juelich/bottleneck/b160.txt"
+    type: "juelich_bneck"
+  - name: "b180"
+    path: "./data/datasets/juelich/bottleneck/b180.txt"
+    type: "juelich_bneck"
+  - name: "b200"
+    path: "./data/datasets/juelich/bottleneck/b200.txt"
+    type: "juelich_bneck"
+  - name: "b220"
+    path: "./data/datasets/juelich/bottleneck/b220.txt"
+    type: "juelich_bneck"
+  - name: "b250"
+    path: "./data/datasets/juelich/bottleneck/b250.txt"
+    type: "juelich_bneck"
+  - name: "l0"
+    path: "./data/datasets/juelich/bottleneck/l0.txt"
+    type: "juelich_bneck"
+  - name: "l2"
+    path: "./data/datasets/juelich/bottleneck/l2.txt"
+    type: "juelich_bneck"
+  - name: "l4"
+    path: "./data/datasets/juelich/bottleneck/l4.txt"
+    type: "juelich_bneck"
   # trajnet++/train/real_data
-  - name: "biwi_hotel"
-    path: "./data/datasets/trajnet++/train/real_data/biwi_hotel.ndjson"
-    type: "trajnet++"
+  # - name: "biwi_hotel"
+  #   path: "./data/datasets/trajnet++/train/real_data/biwi_hotel.ndjson"
+  #   type: "trajnet++"
   # - name: "cff_06"
   #   path: "./data/datasets/trajnet++/train/real_data/cff_06.ndjson"
   #   type: "trajnet++"
@@ -53,6 +94,6 @@ datasets:
   #   path: "./data/datasets/trajnet++/train/real_data/wildtrack.ndjson"
   #   type: "trajnet++"
   # trajnet++/train/synth_data
-  - name: "orca_synth"
-    path: "./data/datasets/trajnet++/train/synth_data/orca_synth.ndjson"
-    type: "trajnet++"
+  # - name: "orca_synth"
+  #   path: "./data/datasets/trajnet++/train/synth_data/orca_synth.ndjson"
+  #   type: "trajnet++"
