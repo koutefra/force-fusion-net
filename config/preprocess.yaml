@@ -1,11 +1,10 @@
-save_format: "json"  # or "pickle"
 output_path: "./data/preprocessed"
 
 datasets:
   - juelich_bneck:
       compute_fdm: true
       input_folder: "./data/datasets/juelich/bottleneck/"
-      sampling_step: 10
+      sampling_step: 5
       fdm_settings:
         fdm_window_size: 20
       names:

@@ -1,6 +1,6 @@
 from entities.scene import Scenes
 from data.loaders.base_loader import BaseLoader
-from entities.features import  SceneFeatures
+from entities.features import  SceneFeatures, Features
 from collections import defaultdict
 import json
 import pickle
@@ -21,63 +21,84 @@ class SceneDataset:
             scenes[loader_name] = loader.load(print_progress)
         return scenes
 
-    def get_features(self) -> dict[str, dict[str, SceneFeatures]]:
+    def _process_scenes(
+        self,
+        operation: callable,
+        desc_template: str,
+    ) -> dict[str, dict[str, SceneFeatures]]:
         features = defaultdict(lambda: dict())
         for loader_name, loader_scenes in self.scenes.items():
             for scene_id, scene in tqdm(
-                loader_scenes.items(), 
-                desc=f"Extracting scene features of dataset {loader_name}...", 
-                disable=not self.print_progress):
-                scene_features = SceneFeatures.get_scene_features(scene)
-                features[loader_name][scene_id] = scene_features
+                loader_scenes.items(),
+                desc=desc_template.format(loader_name=loader_name),
+                disable=not self.print_progress
+            ):
+                features[loader_name][scene_id] = operation(scene)
         return features
+
+    def get_features(self) -> dict[str, dict[str, SceneFeatures]]:
+        return self._process_scenes(
+            operation=SceneFeatures.get_scene_features,
+            desc_template="Extracting scene features of dataset {loader_name}..."
+        )
+
+    def get_labeled_features(self) -> dict[str, dict[str, SceneFeatures]]:
+        return self._process_scenes(
+            operation=SceneFeatures.get_scene_labeled_features,
+            desc_template="Extracting labeled scene features of dataset {loader_name}..."
+        )
 
     def get_scene_features(self, loader_name: str, scene_id: str) -> SceneFeatures:
         return SceneFeatures.get_scene_features(self.scenes[loader_name][scene_id])
 
-    @staticmethod
-    def save_features(
-        features: dict[str, dict[str, SceneFeatures]], 
-        filepath: str, 
-        save_format: str = "pickle"
-    ) -> None:
-        if save_format == "json":
-            # Convert features to a JSON-compatible format
-            json_compatible_features = [
-                {
-                    "loader": loader_name,
-                    "scene": scene_id,
-                    "frame": frame_number,
-                    "person": person_id,
-                    "features": person_features.to_json()
-                }
-                for loader_name, loader_scenes in features.items()
-                for scene_id, scene_features in loader_scenes.items()
-                for frame_number, frame_features in scene_features.features.items()
-                for person_id, person_features in frame_features.features.items()
-            ]
-            with open(f"{filepath}.json", "w") as f:
-                json.dump(json_compatible_features, f)
-        elif save_format == "pickle":
-            with open(f"{filepath}.pkl", "wb") as f:
-                pickle.dump(features, f)
-        else:
-            raise ValueError("Unsupported save format. Use 'json' or 'pickle'.")
+    def get_scene_labeled_features(self, loader_name: str, scene_id: str) -> SceneFeatures:
+        return SceneFeatures.get_scene_labeled_features(self.scenes[loader_name][scene_id])
 
     @staticmethod
-    def load_features(filepath: str, save_format: str = "pickle") -> dict[str, dict[str, SceneFeatures]]:
-        if save_format == "json":
-            with open(f"{filepath}.json", "r") as f:
-                json_features = json.load(f)
-                features = {}
-                for loader_name, loader_scenes in json_features.items():
-                    features[loader_name] = {
-                        scene_id: SceneFeatures.from_dict(scene_features) 
-                        for scene_id, scene_features in loader_scenes.items()
-                    }
-                return features
-        elif save_format == "pickle":
-            with open(f"{filepath}.pkl", "rb") as f:
-                return pickle.load(f)
-        else:
-            raise ValueError("Unsupported save format. Use 'json' or 'pickle'.")
+    def save_features_as_ndjson(
+        features: dict[str, dict[str, SceneFeatures]], 
+        filepath: str,
+        writing_mode: str = "w"
+    ) -> None:
+        with open(f"{filepath}.ndjson", writing_mode) as f:
+            for loader_name, loader_scenes in features.items():
+                for scene_id, scene_features in loader_scenes.items():
+                    for features_dict in scene_features.to_ndjson():
+                        line_to_dump = {"loader": loader_name, "scene": scene_id, **features_dict}
+                        json.dump(line_to_dump, f)
+                        f.write("\n")
+    @staticmethod
+    def load_features_from_ndjson(filepath: str) -> dict[str, dict[str, SceneFeatures]]:
+        features = defaultdict(dict)
+        grouped_data = defaultdict(lambda: defaultdict(list))
+
+        with open(filepath, "r") as file:
+            for line in file:
+                json_object = json.loads(line)
+                loader_name = json_object["loader"]
+                scene_id = json_object["scene"]
+                grouped_data[loader_name][scene_id].append({
+                    "frame_number": json_object["frame_number"],
+                    "person": json_object["person"],
+                    "features": json_object["features"],
+                })
+
+        for loader_name, loader_scenes in grouped_data.items():
+            for scene_id, scene_data in loader_scenes.items():
+                features[loader_name][scene_id] = SceneFeatures.from_dict(scene_data)
+
+        return features
+
+    @staticmethod
+    def save_features_as_pickle(
+        features: dict[str, dict[str, SceneFeatures]], 
+        filepath: str
+    ) -> None:
+        with open(f"{filepath}.pkl", "wb") as f:
+            pickle.dump(features, f)
+
+    @staticmethod
+    def load_features_from_pickle(filepath: str) -> dict[str, dict[str, SceneFeatures]]:
+        with open(filepath, "rb") as f:
+            features = pickle.load(f)
+        return features

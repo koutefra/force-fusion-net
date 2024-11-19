@@ -29,12 +29,9 @@ def main(args: argparse.Namespace) -> None:
             for path, name in paths_and_names:
                 loader = JuelichBneckLoader([(path, name)], sampling_step, fdm_calculator)
                 scene_dataset = SceneDataset({'juelich_bneck': loader})
-                features = scene_dataset.get_features()
-                scene_dataset.save_features(
-                    features, 
-                    os.path.join(config['output_path'], f'{name}_sstep{sampling_step}'), 
-                    config['save_format']
-                )
+                features = scene_dataset.get_labeled_features()
+                filepath = os.path.join(config['output_path'], f'juelich_bneck_labeled_sstep{sampling_step}')
+                scene_dataset.save_features_as_ndjson(features, filepath, writing_mode="a")
         else:
             raise ValueError(f"Unknown dataset type: {dataset}")
 

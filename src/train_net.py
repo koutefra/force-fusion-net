@@ -1,27 +1,22 @@
 import argparse
+import random
 import os
 import datetime
 import re
 import numpy as np
 import torch
+import torchmetrics
 from data.scene_dataset import SceneDataset
-from data.data_processor import EagerProcessor, LazyProcessor
-from data.loaders.trajnet_loader import TrajnetLoader
-from data.loaders.juelich_bneck_loader import JuelichBneckLoader
 from data.torch_dataset import TorchSceneDataset
 from models.neural_net_model import NeuralNetModel
-from data.feature_extractor import FeatureExtractor
 from entities.features import IndividualFeatures, InteractionFeatures, ObstacleFeatures
-import torchmetrics
 import yaml
 from pathlib import Path
-from data.fdm_calculator import FiniteDifferenceCalculator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", required=True, type=str, help="Path to the YAML config file.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
-parser.add_argument("--load_data_on_demand", action="store_true", help="Whether to load data on demand.")
 
 def main(args: argparse.Namespace) -> None:
     project_dir = Path(args.config_path).parent.parent.absolute()
@@ -31,7 +26,6 @@ def main(args: argparse.Namespace) -> None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # create logdir
     args.logdir = os.path.join("logs", "{}-{}-{}".format(
         os.path.basename(globals().get("__file__", "notebook")),
         datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
@@ -39,32 +33,27 @@ def main(args: argparse.Namespace) -> None:
     ))
     os.makedirs(args.logdir, exist_ok=True)
 
-    loaders = {}
-    for dataset in config['datasets']:
-        name = dataset['name']
-        path = (project_dir / dataset["path"]).resolve()
-        dataset_type = dataset["type"]
+    dataset_conf = config['datasets'][0]
+    name = dataset_conf['name']
+    path = (project_dir / dataset_conf["path"]).resolve()
+    format = dataset_conf["format"]
 
-        if dataset_type == "trajnet++":
-            fdm_calculator = FiniteDifferenceCalculator(win_size=2)
-            loaders[name] = TrajnetLoader(path, name, fdm_calculator)
-        elif dataset_type == "juelich_bneck":
-            fdm_calculator = FiniteDifferenceCalculator(win_size=20)
-            loaders[name] = JuelichBneckLoader(path, name, fdm_calculator)
-        else:
-            raise ValueError(f"Unknown dataset type: {dataset_type}")
-
-    if args.load_data_on_demand:
-        processor = LazyProcessor(loaders)
+    if format == "ndjson":
+        features = SceneDataset.load_features_from_ndjson(path)
     else:
-        processor = EagerProcessor(loaders)
-    scene_collection = SceneDataset(processor)
-    print('Splitting scenes into train/val...')
-    scene_collection_train, scene_collection_eval = scene_collection.split(config["val_ratio"])
+        raise ValueError('No supported')
 
-    feature_extractor = FeatureExtractor(print_progress=False)
-    train_dataset = TorchSceneDataset(scene_collection_train, device=args.device, feature_extractor=feature_extractor) 
-    eval_dataset = TorchSceneDataset(scene_collection_eval, device=args.device, feature_extractor=feature_extractor)
+    serialized_features = [
+        f for scenes_f in features.values() for scene_f in scenes_f.values() for f in scene_f.to_list()
+    ]
+    random.shuffle(serialized_features)
+
+    val_size = int(len(serialized_features) * config['val_ratio'])
+    train_features = serialized_features[val_size:]
+    val_features = serialized_features[:val_size]
+
+    train_dataset = TorchSceneDataset(train_features, device=args.device, dtype=torch.float32) 
+    eval_dataset = TorchSceneDataset(val_features, device=args.device, dtype=torch.float32) 
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config['batch_size'], collate_fn=train_dataset.prepare_batch)
     eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=config['batch_size'], collate_fn=eval_dataset.prepare_batch)

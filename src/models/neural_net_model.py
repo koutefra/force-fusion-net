@@ -57,6 +57,15 @@ class NeuralNetModel(TrainableModule):
             x = F.relu(layer(x))
         return self.fc_output(x)
 
+    def compute_loss(self, y_pred, y, *xs):
+        """Compute the loss of the model given the inputs, predictions, and target outputs."""
+        return self.loss(y_pred, y)
+
+    def compute_metrics(self, y_pred, y, *xs, training):
+        """Compute and return metrics given the inputs, predictions, and target outputs."""
+        self.metrics.update(y_pred, y)
+        return self.metrics.compute()
+
     # @staticmethod
     # def from_weight_file(path: str, device: str | torch.device = "auto") -> "NeuralNetModel":
     #     state_dict = torch.load(path, map_location="cpu")

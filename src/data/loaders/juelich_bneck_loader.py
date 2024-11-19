@@ -85,13 +85,13 @@ class JuelichBneckLoader(BaseLoader):
     def parse_file(path: str, sampling_step: int) -> list[tuple[int, int, float, float]]:
         parsed_data = []
         with open(path, 'r') as file:
-            for i, line in enumerate(file):
-                if i % sampling_step == 0:
-                    parts = line.strip().split()
-                    person_id = int(parts[0])
-                    frame_number = int(parts[1])
-                    position_y = float(parts[2])
-                    position_x = float(parts[3])
+            for line in file:
+                parts = line.strip().split()
+                person_id = int(parts[0])
+                frame_number = int(parts[1])
+                position_y = float(parts[2])
+                position_x = float(parts[3])
+                if frame_number % sampling_step == 0:
                     parsed_data.append((person_id, frame_number, position_x, position_y))
         return parsed_data
 

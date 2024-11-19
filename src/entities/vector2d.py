@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 from typing import Union, TypeVar
+import torch
 
 T = TypeVar('T', bound='Point2D')
 
@@ -11,6 +12,9 @@ class Point2D:
 
     def to_tuple(self) -> tuple[float, float]:
         return (self.x, self.y)
+
+    def to_list(self) -> list[float]:
+        return [self.x, self.y]
 
     def to_int_tuple(self) -> tuple[int, int]:
         return (int(self.x), int(self.y))
@@ -81,6 +85,12 @@ class Point2D:
 
     def __len__(self) -> int:
         return 2
+
+    def to_tensor(self, device: torch.device | str, dtype: torch.dtype = torch.float32, precision: int = 6) -> torch.Tensor:
+        return torch.tensor([self.x, self.y], dtype=dtype, device=device)
+
+    def to_json(self) -> dict:
+        return {"x": self.x, "y": self.y}
 
     @staticmethod
     def calculate_average_change(points: list[T], delta_times: list[float], result_type: type[T]) -> T:
