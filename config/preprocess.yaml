@@ -1,87 +1,27 @@
-test_ratio: 0.2
 save_format: "json"  # or "pickle"
-  output_path: "./data/preprocessed"
+output_path: "./data/preprocessed"
 
 datasets:
-  # juelich_bneck
-  - name: "b090"
-    input_path: "./data/datasets/juelich/bottleneck/b090.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b100"
-    input_path: "./data/datasets/juelich/bottleneck/b100.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b120"
-    input_path: "./data/datasets/juelich/bottleneck/b110.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b120"
-    input_path: "./data/datasets/juelich/bottleneck/b120.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b140"
-    input_path: "./data/datasets/juelich/bottleneck/b140.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b160"
-    input_path: "./data/datasets/juelich/bottleneck/b160.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b180"
-    input_path: "./data/datasets/juelich/bottleneck/b180.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b200"
-    input_path: "./data/datasets/juelich/bottleneck/b200.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b220"
-    input_path: "./data/datasets/juelich/bottleneck/b220.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "b250"
-    input_path: "./data/datasets/juelich/bottleneck/b250.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "l0"
-    input_path: "./data/datasets/juelich/bottleneck/l0.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "l2"
-    input_path: "./data/datasets/juelich/bottleneck/l2.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
-  - name: "l4"
-    input_path: "./data/datasets/juelich/bottleneck/l4.txt"
-    type: "juelich_bneck"
-    compute_fdm: true
-    fdm_settings:
-      fdm_window_size: 20
+  - juelich_bneck:
+      compute_fdm: true
+      input_folder: "./data/datasets/juelich/bottleneck/"
+      sampling_step: 10
+      fdm_settings:
+        fdm_window_size: 20
+      names:
+        - "b090"
+        - "b100"
+        - "b120"
+        - "b120"
+        - "b140"
+        - "b160"
+        - "b180"
+        - "b200"
+        - "b220"
+        - "b250"
+        - "l0"
+        - "l2"
+        - "l4"
   # trajnet++/train/real_data
   # - name: "biwi_hotel"
   #   input_path: "./data/datasets/trajnet++/train/real_data/biwi_hotel.ndjson"

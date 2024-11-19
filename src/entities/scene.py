@@ -7,14 +7,14 @@ from typing import Optional
 @dataclass(frozen=True)
 class Person:
     position: Point2D
-    goal: Optional[Point2D]
-    velocity: Optional[Velocity]
-    acceleration: Optional[Acceleration]
+    goal: Optional[Point2D] = None
+    velocity: Optional[Velocity] = None
+    acceleration: Optional[Acceleration] = None
 
 Frame = dict[int, Person]  # person_id -> Person
 Frames = OrderedDict[int, Frame]  # frame_number -> Frame
 Trajectory = OrderedDict[int, Person]  # frane_number -> Person
-Trajectories = dict[int, ]  # person_id -> Trajectory
+Trajectories = dict[int, Trajectory]  # person_id -> Trajectory
 
 @dataclass(frozen=True)
 class Scene:

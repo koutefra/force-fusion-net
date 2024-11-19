@@ -5,14 +5,18 @@ from entities.scene import Scene, Scenes, Trajectories, Person
 from entities.obstacle import LineObstacle
 from data.fdm_calculator import FiniteDifferenceCalculator
 from typing import Optional
+from tqdm import tqdm
 
 class JuelichBneckLoader(BaseLoader):
     def __init__(
         self, 
         paths_and_names: list[tuple[str, str]], 
+        sampling_step: int,
         fdm_calculator: Optional[FiniteDifferenceCalculator]
     ):
         self.paths_and_names = paths_and_names
+        self.sampling_step = sampling_step
+        self.fps = 25.0 / sampling_step
         self.fdm_calculator = fdm_calculator
     
     BOUNDARIES = {
@@ -31,10 +35,13 @@ class JuelichBneckLoader(BaseLoader):
         "l4": "POLYGON ((-4 -4, -4 5, 4 5, 4 -4), (-3.5 -3.5, -3.5 0, -0.6 0, -0.6 4, -0.65 4, -0.65 0.05, -3.55 0.05, -3.55 -3.5), (3.5 -3.5, 3.5 0, 0.6 0, 0.6 4, 0.65 4, 0.65 0.05, 3.55 0.05, 3.55 -3.5))"
     }
 
-    def load(self) -> Scenes:
+    def load(self, print_progress: bool = True) -> Scenes:
         scenes = {}
-        for path, name in self.paths_and_names:
-            scene = self._load_scene(path, name)
+        for path, name in tqdm(
+            self.paths_and_names, 
+            desc="Loading scenes for juelich_bneck dataset...", 
+            disable=not print_progress):
+            scene = self._load_scene(path, name, self.sampling_step, self.fps, fdm_calculator=self.fdm_calculator)
             scenes[name] = scene
         return scenes
 
@@ -42,10 +49,12 @@ class JuelichBneckLoader(BaseLoader):
     def _load_scene(
         path: str, 
         dataset_name: str, 
+        sampling_step: int,
+        fps: float,
         goal_position: Point2D = Point2D(x=499, y=200),
         fdm_calculator: Optional[FiniteDifferenceCalculator] = None
     ) -> Scene:
-        parsed_file = JuelichBneckLoader.parse_file(path)
+        parsed_file = JuelichBneckLoader.parse_file(path, sampling_step)
 
         trajectories: Trajectories = defaultdict(lambda: OrderedDict())
         for person_id, frame_number, x, y in parsed_file:
@@ -54,13 +63,13 @@ class JuelichBneckLoader(BaseLoader):
                 goal=goal_position
             )
 
-        if fdm_calculator:
-            fdm_calculator.compute_velocities(trajectories)
-            fdm_calculator.compute_accelerations(trajectories)
+        if fdm_calculator is not None:
+            trajectories = fdm_calculator.compute_velocities(trajectories, fps)
+            trajectories = fdm_calculator.compute_accelerations(trajectories, fps)
             
         obstacles = [
             # time 100 for conversion from meters to centimeters
-            LineObstacle(obstacle[i] * 100, obstacle[i + 1] * 100) 
+            LineObstacle((obstacle[i] * 100, obstacle[i + 1] * 100)) 
             for obstacle in JuelichBneckLoader.parse_polygon_string(JuelichBneckLoader.BOUNDARIES[dataset_name])
             for i in range(len(obstacle) - 1)
         ]
@@ -69,20 +78,21 @@ class JuelichBneckLoader(BaseLoader):
             id=dataset_name,
             obstacles=obstacles,
             frames=Scene.trajectories_to_frames(trajectories),
-            fps=25.0
+            fps=fps
         )
 
     @staticmethod
-    def parse_file(path: str) -> list[tuple[int, int, float, float]]:
+    def parse_file(path: str, sampling_step: int) -> list[tuple[int, int, float, float]]:
         parsed_data = []
         with open(path, 'r') as file:
-            for line in file:
-                parts = line.strip().split()
-                person_id = int(parts[0])
-                frame_number = int(parts[1])
-                position_y = float(parts[2])
-                position_x = float(parts[3])
-                parsed_data.append((person_id, frame_number, position_x, position_y))
+            for i, line in enumerate(file):
+                if i % sampling_step == 0:
+                    parts = line.strip().split()
+                    person_id = int(parts[0])
+                    frame_number = int(parts[1])
+                    position_y = float(parts[2])
+                    position_x = float(parts[3])
+                    parsed_data.append((person_id, frame_number, position_x, position_y))
         return parsed_data
 
     @staticmethod

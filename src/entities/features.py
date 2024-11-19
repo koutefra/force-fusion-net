@@ -9,18 +9,18 @@ import pickle
 
 @dataclass(frozen=True)
 class FeatureBase:
-    def to_list(self) -> list[float]:
-        return list(asdict(self).values())
+    def to_list(self, precision: int = 6) -> list[float]:
+        return [round(value, precision) if isinstance(value, float) else value for value in asdict(self).values()]
 
     @classmethod
     def dim(cls) -> int:
         return len(cls.__dataclass_fields__)
 
-    def to_tensor(self) -> torch.Tensor:
-        return torch.tensor(self.to_list(), dtype=torch.float32)
+    def to_tensor(self, precision: int = 6) -> torch.Tensor:
+        return torch.tensor(self.to_list(precision), dtype=torch.float32)
 
-    def to_json(self) -> dict:
-        return asdict(self)
+    def to_json(self, precision: int = 6) -> dict:
+        return {key: (round(value, precision) if isinstance(value, float) else value) for key, value in asdict(self).items()}
 
 @dataclass(frozen=True)
 class IndividualFeatures(FeatureBase):
@@ -131,9 +131,9 @@ class Features:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "individual_features": self.individual_features.to_json(),
-            "interaction_features": [feat.to_json() for feat in self.interaction_features],
-            "obstacle_features": [feat.to_json() for feat in self.obstacle_features],
+            "individual": self.individual_features.to_list(),
+            "intraction": [feat.to_list() for feat in self.interaction_features],
+            "obstacle": [feat.to_list() for feat in self.obstacle_features],
         }
 
     @staticmethod
@@ -156,10 +156,10 @@ class FrameFeatures:
     def get_frame_features(frame: Frame, obstacles: list[BaseObstacle]) -> "FrameFeatures":
         frame_features = {}
         for person_id, person in frame.items():
-            if person.goal and person.velocity:
+            if person.goal is not None and person.velocity is not None:
                 features = Features.get_features(person, person_id, frame, obstacles)
                 frame_features[person_id] = features
-        return frame_features
+        return FrameFeatures(features=frame_features)
 
     def to_json(self) -> dict[int, dict]:
         return {person_id: feature.to_json() for person_id, feature in self.features.items()}
@@ -170,24 +170,24 @@ class FrameFeatures:
         return FrameFeatures(features=features)
 
 class SceneFeatures:
-    def __init__(self, frames: dict[int, FrameFeatures]):
-        self.frames = frames  # frame_number -> FrameFeatures
+    def __init__(self, features: dict[int, FrameFeatures]):
+        self.features = features # frame_number -> FrameFeatures
 
     @staticmethod
-    def get_features(scene: Scene) -> "SceneFeatures":
+    def get_scene_features(scene: Scene) -> "SceneFeatures":
         scene_features = {}
         for frame_number, frame in scene.frames.items():
             frame_features = FrameFeatures.get_frame_features(frame, scene.obstacles)
             scene_features[frame_number] = frame_features
-        return scene_features
+        return SceneFeatures(features=scene_features)
 
     def to_json(self) -> dict[int, dict]:
-        return {frame_number: frame_features.to_json() for frame_number, frame_features in self.frames.items()}
+        return {frame_number: frame_features.to_json() for frame_number, frame_features in self.features.items()}
 
     @staticmethod
     def from_dict(data: dict) -> "SceneFeatures":
-        frames = {int(frame_number): FrameFeatures.from_dict(frame_data) for frame_number, frame_data in data.items()}
-        return SceneFeatures(frames=frames)
+        features = {int(frame_number): FrameFeatures.from_dict(frame_data) for frame_number, frame_data in data.items()}
+        return SceneFeatures(features=features)
 
     @classmethod
     def load(cls, filepath: str, save_format: str = "json") -> "SceneFeatures":

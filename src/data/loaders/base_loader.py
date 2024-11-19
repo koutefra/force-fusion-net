@@ -3,5 +3,5 @@ from entities.scene import Scenes
 
 class BaseLoader(ABC):
     @abstractmethod
-    def load(self) -> Scenes:
+    def load(self, print_progress: bool = True) -> Scenes:
         pass

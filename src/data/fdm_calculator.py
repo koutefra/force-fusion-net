@@ -1,5 +1,5 @@
 from entities.vector2d import Velocity, Acceleration
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from entities.scene import Trajectories, Person
 
 class FiniteDifferenceCalculator:
@@ -9,13 +9,32 @@ class FiniteDifferenceCalculator:
         if fdm_type != "backward":
             raise ValueError("Only backward FDM is currently supported.")
     
-    def compute_velocities(self, trajectories: Trajectories, fps: float) -> None:
-        for person_trajectory in trajectories.values():
-            self._compute_fdm_property(person_trajectory, "position", "velocity", fps)
+    def compute_velocities(self, trajectories: Trajectories, fps: float) -> Trajectories:
+        return self._compute_property(trajectories, "position", "velocity", fps)
 
-    def compute_accelerations(self, trajectories: Trajectories, fps: float) -> None:
-        for person_trajectory in trajectories.values():
-            self._compute_fdm_property(person_trajectory, "velocity", "acceleration", fps)
+    def compute_accelerations(self, trajectories: Trajectories, fps: float) -> Trajectories:
+        return self._compute_property(trajectories, "velocity", "acceleration", fps)
+
+    def _compute_property(
+        self, 
+        trajectories: Trajectories, 
+        in_prop: str, 
+        out_prop: str, 
+        fps: float
+    ) -> Trajectories:
+        new_trajectories = defaultdict(OrderedDict)
+        for person_id, person_trajectory in trajectories.items():
+            computed_properties = self._compute_fdm_property(person_trajectory, in_prop, out_prop, fps)
+            for frame_number, computed_value in computed_properties.items():
+                ori_person = person_trajectory[frame_number]
+                new_person = Person(
+                    position=ori_person.position,
+                    goal=ori_person.goal,
+                    velocity=ori_person.velocity if out_prop != "velocity" else computed_value,
+                    acceleration=ori_person.acceleration if out_prop != "acceleration" else computed_value
+                )
+                new_trajectories[person_id][frame_number] = new_person
+        return new_trajectories
 
     def _compute_fdm_property(
         self,
@@ -23,7 +42,8 @@ class FiniteDifferenceCalculator:
         in_prop: str,
         out_prop: str,
         fps: float
-    ) -> None:
+    ) -> OrderedDict[int, Velocity | Acceleration]:
+        computed_results = OrderedDict()
         frame_numbers = list(person_trajectory.keys())
         for frame_id, frame_number in enumerate(frame_numbers):
             window_frame_ids = list(range(max(0, frame_id - self.win_size + 1), frame_id + 1))
@@ -43,5 +63,5 @@ class FiniteDifferenceCalculator:
                     Velocity.from_points(window, time_window) if out_prop == "velocity"
                     else Acceleration.from_velocities(window, time_window)
                 )
-            
-            setattr(person_trajectory[frame_number], out_prop, computed_value)
+                computed_results[frame_number] = computed_value  # Store the computed result in a new dict
+        return computed_results

@@ -8,36 +8,35 @@ from data.loaders.juelich_bneck_loader import JuelichBneckLoader
 from data.fdm_calculator import FiniteDifferenceCalculator
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config_path", required=True, type=str, help="Path to the YAML config file.")
+parser.add_argument("--config", required=True, type=str, help="Path to the YAML config file.")
 
 def main(args: argparse.Namespace) -> None:
-    project_dir = Path(args.config_path).parent.parent.absolute()
-    with open(args.config_path, "r") as file:
+    with open(args.config, "r") as file:
         config = yaml.safe_load(file)
 
-    loaders = {}
     for dataset in config['datasets']:
-        name = dataset['name']
-        path = (project_dir / dataset["input_path"]).resolve()
-        dataset_type = dataset["type"]
-        compute_fdm = dataset['compute_fdm']
+        if 'juelich_bneck' in dataset:
+            dataset_config = dataset['juelich_bneck']
+            compute_fdm = dataset_config['compute_fdm']
+            input_folder = dataset_config['input_folder']
+            sampling_step = int(dataset_config['sampling_step'])
+            names = dataset_config['names']
+            paths_and_names = [(os.path.join(input_folder, f"{name}.txt"), name) for name in names]
+            if compute_fdm:
+                window_size = dataset_config['fdm_settings']['fdm_window_size']
+                fdm_calculator = FiniteDifferenceCalculator(window_size)
 
-        if compute_fdm:
-            win_size = dataset['fdm_settings']['fdm_window_size']
-            fdm_calculator = FiniteDifferenceCalculator(win_size=win_size)
-
-        if dataset_type == "trajnet++":
-            loaders[name] = TrajnetLoader(path, name, fdm_calculator)
-        elif dataset_type == "juelich_bneck":
-            loaders[name] = JuelichBneckLoader(path, name, fdm_calculator)
+            for path, name in paths_and_names:
+                loader = JuelichBneckLoader([(path, name)], sampling_step, fdm_calculator)
+                scene_dataset = SceneDataset({'juelich_bneck': loader})
+                features = scene_dataset.get_features()
+                scene_dataset.save_features(
+                    features, 
+                    os.path.join(config['output_path'], f'{name}_sstep{sampling_step}'), 
+                    config['save_format']
+                )
         else:
-            raise ValueError(f"Unknown dataset type: {dataset_type}")
-
-    scene_dataset = SceneDataset(loaders)
-
-    features = scene_dataset.get_features()
-
-    scene_dataset.save_features(features, os.path(config['output_path']), config['save_format'])
+            raise ValueError(f"Unknown dataset type: {dataset}")
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))

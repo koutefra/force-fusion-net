@@ -1,34 +1,39 @@
 from entities.scene import Scenes
 from data.loaders.base_loader import BaseLoader
-from entities.features import Features, SceneFeatures
+from entities.features import  SceneFeatures
 from collections import defaultdict
 import json
 import pickle
+from tqdm import tqdm
 
 class SceneDataset:
     scenes = dict[str, Scenes]
 
-    def __init__(self, loaders: dict[str, BaseLoader]):
+    def __init__(self, loaders: dict[str, BaseLoader], print_progress: bool = True):
         self.loaders = loaders
-        self.scenes = self._load(loaders)
+        self.scenes = self._load(loaders, print_progress)
+        self.print_progress = print_progress
 
     @staticmethod
-    def _load(loaders: dict[str, BaseLoader]):
+    def _load(loaders: dict[str, BaseLoader], print_progress: bool = True):
         scenes = {}
         for loader_name, loader in loaders.items():
-            scenes[loader_name] = loader.load()
+            scenes[loader_name] = loader.load(print_progress)
         return scenes
 
     def get_features(self) -> dict[str, dict[str, SceneFeatures]]:
         features = defaultdict(lambda: dict())
-        for loader_name, loader_scenes in self.scenes:
-            for scene_id, scene in loader_scenes:
-                scene_features = Features.get_features(scene)
+        for loader_name, loader_scenes in self.scenes.items():
+            for scene_id, scene in tqdm(
+                loader_scenes.items(), 
+                desc=f"Extracting scene features of dataset {loader_name}...", 
+                disable=not self.print_progress):
+                scene_features = SceneFeatures.get_scene_features(scene)
                 features[loader_name][scene_id] = scene_features
         return features
 
     def get_scene_features(self, loader_name: str, scene_id: str) -> SceneFeatures:
-        return Features.get_features(self.scenes[loader_name][scene_id])
+        return SceneFeatures.get_scene_features(self.scenes[loader_name][scene_id])
 
     @staticmethod
     def save_features(
@@ -38,12 +43,19 @@ class SceneDataset:
     ) -> None:
         if save_format == "json":
             # Convert features to a JSON-compatible format
-            json_compatible_features = {
-                loader_name: {
-                    scene_id: scene_features.to_json()
-                    for scene_id, scene_features in loader_scenes.items()
-                } for loader_name, loader_scenes in features.items()
-            }
+            json_compatible_features = [
+                {
+                    "loader": loader_name,
+                    "scene": scene_id,
+                    "frame": frame_number,
+                    "person": person_id,
+                    "features": person_features.to_json()
+                }
+                for loader_name, loader_scenes in features.items()
+                for scene_id, scene_features in loader_scenes.items()
+                for frame_number, frame_features in scene_features.features.items()
+                for person_id, person_features in frame_features.features.items()
+            ]
             with open(f"{filepath}.json", "w") as f:
                 json.dump(json_compatible_features, f)
         elif save_format == "pickle":
