@@ -1,10 +1,11 @@
 import pygame
 from pygame import Surface
 from entities.vector2d import Point2D
-from entities.scene import Scene, Obstacle
-from entities.frame import Frame, PersonInFrame
+from entities.scene import Scene, Person, Frame
+from entities.obstacle import BaseObstacle, PointObstacle, LineObstacle
 import math
 import sys
+from typing import Optional
 
 class Visualizer:
     default_colors: dict[str, tuple[int, int, int]] = {
@@ -91,38 +92,65 @@ class Visualizer:
     def draw_person(
         self, 
         screen: Surface, 
-        person: PersonInFrame, 
+        person: Person, 
+        color: tuple[int, int, int],
         min_pos: Point2D, 
         spatial_scale: float
     ) -> None:
         """Draw a single person with their velocity and acceleration vectors."""
         scaled_position = (person.position - min_pos) * spatial_scale
-        pygame.draw.circle(screen, self.other_person_color, scaled_position.to_tuple(), self.circle_radius)
+        pygame.draw.circle(screen, color, scaled_position.to_tuple(), self.circle_radius)
 
-        # Draw velocity and acceleration vectors
         vectors = [
-            (person.velocity * spatial_scale, self.velocity_color), 
-            (person.acceleration * spatial_scale, self.acceleration_color)
+            (person.velocity * spatial_scale if person.velocity else None, self.velocity_color),
+            (person.acceleration * spatial_scale if person.acceleration else None, self.acceleration_color)
         ]
+        vectors = [(vector, color) for vector, color in vectors if vector is not None]
+
+        # Draw valid vectors
         for vector, color in vectors:
             end_pos = scaled_position + vector
-            pygame.draw.line(screen, color, scaled_position.to_tuple(), end_pos.to_tuple(), self.vector_line_width)
+            pygame.draw.line(
+                screen, 
+                color, 
+                scaled_position.to_tuple(), 
+                end_pos.to_tuple(), 
+                self.vector_line_width
+            )
             self.draw_arrowhead(screen, scaled_position, end_pos, color)
 
     def draw_obstacles(
         self, 
         screen: Surface, 
-        obstacles: list[Obstacle], 
+        obstacles: list[BaseObstacle], 
         min_pos: Point2D, 
         spatial_scale: float
     ) -> None:
         """Draw all obstacles as connected lines between each pair of vertices."""
         for obstacle in obstacles:
-            scaled_vertices = [(vertex - min_pos) * spatial_scale for vertex in obstacle.vertices]
-            for i in range(len(scaled_vertices) - 1):
-                start_vertex = scaled_vertices[i].to_tuple()
-                end_vertex = scaled_vertices[i + 1].to_tuple()
-                pygame.draw.line(screen, self.obstacle_color, start_vertex, end_vertex, width=self.obstacle_line_width)
+            if isinstance(obstacle, LineObstacle):
+                scaled_start_point = (obstacle.line[0] - min_pos) * spatial_scale
+                scaled_end_point = (obstacle.line[1] - min_pos) * spatial_scale
+                pygame.draw.line(
+                    screen, 
+                    self.obstacle_color, 
+                    scaled_start_point, 
+                    scaled_end_point, 
+                    width=self.obstacle_line_width
+                )
+            elif isinstance(obstacle, PointObstacle):
+                scaled_position = (obstacle.position - min_pos) * spatial_scale
+                rect = pygame.Rect(
+                    scaled_position.x, 
+                    scaled_position.y, 
+                    self.obstacle_line_width, 
+                    self.obstacle_line_width
+                )
+                pygame.draw.rect(
+                    screen, 
+                    self.obstacle_color, 
+                    rect
+                )
 
     def setup_screen(self, scene: Scene, min_pos: Point2D, max_pos: Point2D) -> tuple[Surface, float]:
         """Set up the pygame screen and scaling factor based on scene dimensions."""
@@ -141,16 +169,19 @@ class Visualizer:
         scene: Scene, 
         frame: Frame, 
         min_pos: Point2D, 
-        spatial_scale: float
+        spatial_scale: float,
+        person_ids: Optional[list[int]]
     ) -> None:
         """Draw all persons and obstacles for a single frame."""
-        for person in frame.persons.values():
-            self.draw_person(screen, person, min_pos, spatial_scale)
+        for person_id, person in frame.items():
+            color = self.focus_person_color if person_ids and person_id in person_ids else self.other_person_color
+            self.draw_person(screen, person, color, min_pos, spatial_scale)
         self.draw_obstacles(screen, scene.obstacles, min_pos, spatial_scale)
 
     def draw_scene(
         self, 
         scene: Scene, 
+        person_ids: Optional[list[int]],
         time_scale: float = 1.0
     ) -> None:
         """Initialize and display the scene frame by frame."""
@@ -161,13 +192,14 @@ class Visualizer:
         scaled_fps = int(scene.fps * time_scale)
         font = pygame.font.SysFont(None, self.text_size)
         labels = [
-            ("Persons", self.other_person_color),
+            ("Focus Persons", self.focus_person_color),
+            ("Other Persons", self.other_person_color),
             ("Velocity", self.velocity_color),
             ("Acceleration", self.acceleration_color),
         ]
 
         for frame in scene.frames.values():
-            self.draw_frame(screen, scene, frame, min_pos, spatial_scale)
+            self.draw_frame(screen, scene, frame, min_pos, spatial_scale, person_ids)
             self.draw_labels(screen, labels, font)
             pygame.display.flip()
             clock.tick(scaled_fps)
@@ -181,8 +213,9 @@ class Visualizer:
     def visualize(
         self, 
         scene: Scene, 
+        person_ids: Optional[list[int]],
         time_scale: float = 1.0
     ) -> None:
         """Public method to visualize the scene."""
-        self.draw_scene(scene, time_scale)
+        self.draw_scene(scene, person_ids, time_scale)
         pygame.quit()

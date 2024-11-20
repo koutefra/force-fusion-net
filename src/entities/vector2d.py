@@ -107,6 +107,12 @@ class Point2D:
         avg_dy = dy_total / (len(points) - 1)
         return result_type(avg_dx, avg_dy)
 
+    def is_within(self, bottom_left: "Point2D", top_right: "Point2D") -> bool:
+        return (
+            bottom_left.x <= self.x <= top_right.x and
+            bottom_left.y <= self.y <= top_right.y
+        )
+
 @dataclass(frozen=True)
 class Velocity(Point2D):
     @staticmethod

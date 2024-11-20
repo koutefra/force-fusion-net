@@ -3,7 +3,6 @@ import numpy as np
 from data.scene_dataset import SceneDataset
 from data.loaders.trajnet_loader import TrajnetLoader
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
-from data.feature_extractor import FeatureExtractor
 from visualization.visualization import Visualizer
 from models.neural_net_predictor import NeuralNetPredictor
 from models.social_force_predictor import SocialForcePredictor
@@ -17,6 +16,8 @@ parser.add_argument("--dataset_name", required=True, type=str, help="The dataset
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
 parser.add_argument("--predictor_type",  type=str, help="The trained model type.")
 parser.add_argument("--scenes_to_show", default=[1], nargs='*', type=int, help="IDs of scenes to visualize. If None, random scenes are selected.")
+parser.add_argument("--sampling_step", default=5, required=True, type=int, help="Sampling step.")
+parser.add_argument("--fdm_win_size", default=20, required=True, type=int, help="Finitie difference method window size.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 
 def main(args: argparse.Namespace) -> None:
@@ -24,19 +25,12 @@ def main(args: argparse.Namespace) -> None:
     random.seed(args.seed)
 
     # load data
-    loaders = {}
-    if args.dataset_type == "trajnet++":
-        fdm_calculator = FiniteDifferenceCalculator(win_size=2)
-        loader = TrajnetLoader(args.dataset_path, args.dataset_name, fdm_calculator)
-    elif args.dataset_type == "juelich_bneck":
-        fdm_calculator = FiniteDifferenceCalculator(win_size=20)
-        loader = JuelichBneckLoader(args.dataset_path, args.dataset_name, fdm_calculator)
+    if args.dataset_type == 'juelich_bneck':
+        fdm_calculator = FiniteDifferenceCalculator(args.fdm_win_size)
+        loader = JuelichBneckLoader([(args.dataset_path, args.dataset_name)], args.sampling_step, fdm_calculator)
+        scene_dataset = SceneDataset({'juelich_bneck': loader})
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
-
-    loaders[args.dataset_name] = loader
-    feature_extractor = FeatureExtractor()
-    scene_dataset = SceneDataset(loaders, feature_extractor, load_on_demand=True)
 
     # load predictor
     predictor = None

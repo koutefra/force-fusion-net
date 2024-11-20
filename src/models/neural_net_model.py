@@ -77,28 +77,43 @@ class NeuralNetModel(TrainableModule):
         self.metrics.update(next_pos_predicted, next_positions)
         return self.metrics.compute()
 
-    # @staticmethod
-    # def from_weight_file(path: str, device: str | torch.device = "auto") -> "NeuralNetModel":
-    #     state_dict = torch.load(path, map_location="cpu")
+    @staticmethod
+    def from_weight_file(path: str, device: str | torch.device = "cpu") -> "NeuralNetModel":
+        state_dict = torch.load(path, map_location="cpu")
 
-    #     # Infer the dimensions
-    #     interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
-    #     interaction_output_dim = state_dict['fc_interaction.weight'].size(0)
-    #     individual_fts_dim = state_dict['fcs_main.0.weight'].size(1) - interaction_output_dim
+        # Infer the dimensions
+        interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
+        interaction_out_dim = state_dict['fc_interaction.weight'].size(0)
 
-    #     hidden_dims = []
-    #     for i in range(len(state_dict) - 2):  # exclude the interaction and output layer
-    #         if f'fcs_main.{i}.weight' in state_dict:
-    #             hidden_dims.append(state_dict[f'fcs_main.{i}.weight'].size(0))
+        obstacle_fts_dim = state_dict['fc_obstacle.weight'].size(1)
+        obstacle_out_dim = state_dict['fc_obstacle.weight'].size(0)
 
-    #     output_dim = state_dict['fc_output.weight'].size(0)
+        individual_fts_dim = (
+            state_dict['fcs_main.0.weight'].size(1) 
+            - interaction_out_dim 
+            - obstacle_out_dim
+        )
 
-    #     model = NeuralNetModel(
-    #         individual_fts_dim=individual_fts_dim,
-    #         interaction_fts_dim=interaction_fts_dim,
-    #         interaction_output_dim=interaction_output_dim,
-    #         hidden_dims=hidden_dims,
-    #         output_dim=output_dim
-    #     )
-    #     model.load_weights(path, device)
-    #     return model
+        hidden_dims = []
+        for key in state_dict:
+            if key.startswith("fcs_main.") and key.endswith(".weight"):
+                layer_index = int(key.split(".")[1])
+                if layer_index >= len(hidden_dims):
+                    hidden_dims.append(state_dict[key].size(0))
+
+        output_dim = state_dict['fc_output.weight'].size(0)
+
+        # Create the model
+        model = NeuralNetModel(
+            individual_fts_dim=individual_fts_dim,
+            interaction_fts_dim=interaction_fts_dim,
+            obstacle_fts_dim=obstacle_fts_dim,
+            interaction_out_dim=interaction_out_dim,
+            obstacle_out_dim=obstacle_out_dim,
+            hidden_dims=hidden_dims,
+            output_dim=output_dim
+        )
+
+        # Load weights
+        model.load_weights(path, device)
+        return model

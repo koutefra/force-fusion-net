@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+from functools import cached_property
 from entities.vector2d import Point2D, Velocity, Acceleration
 from entities.obstacle import BaseObstacle
 from collections import OrderedDict, defaultdict
-from typing import Optional
+from typing import Optional, Callable
 
 @dataclass(frozen=True)
 class Person:
@@ -18,13 +19,15 @@ Trajectories = dict[int, Trajectory]  # person_id -> Trajectory
 
 @dataclass(frozen=True)
 class Scene:
+    from entities.features import Features
+
     id: str
     obstacles: list[BaseObstacle]
     frames: Frames
     fps: float
     tag: Optional[list[int]] = None
 
-    @property
+    @cached_property
     def bounding_box(self) -> tuple[Point2D, Point2D]:
         x_min, y_min = float("inf"), float("inf")
         x_max, y_max = float("-inf"), float("-inf")
@@ -53,65 +56,77 @@ class Scene:
         ordered_frame_to_tracks = OrderedDict(sorted(frame_to_tracks.items()))
         return ordered_frame_to_tracks
 
-    # def simulate(
-    #     self, 
-    #     person_ids: list[int],
-    #     predict_force_func: Callable[[dict[int, FrameObject], PersonInFrame, Point2D], Acceleration]
-    # ) -> "Scene":
-    #     frame_numbers = list(self.frames.keys())
-    #     recomputed_frames = {frame_numbers[0]: self.frames[frame_numbers[0]]}
-    #     for frame_id, cur_frame_number in enumerate(frame_numbers):
-    #         cur_frame_objects = {}
-    #         next_frame_objects_wo_acc = {}
-    #         cur_frame_objects_wo_acc = self.frames[cur_frame_number].frame_objects
-    #         common_person_ids = set(person_ids).intersection(cur_frame_objects_wo_acc)
+    def simulate(
+        self, 
+        predict_acc_func: Callable[[list[Features]], list[Acceleration]],
+        frame_step: int,
+        total_steps: int,
+        person_ids: Optional[list[int]]
+    ) -> "Scene":
+        first_frame_number = list(self.frames.keys())[0]
+        first_frame_persons = self.frames[first_frame_number]
+        delta_time = frame_step / self.fps
+        recomputed_frames = [first_frame_persons]
 
-    #         # compute accelerations
-    #         for person_id in common_person_ids:
-    #             person_in_frame_no_acc = cur_frame_objects_wo_acc[person_id]
-    #             pred_acc = predict_force_func(
-    #                 cur_frame_objects_wo_acc, 
-    #                 person_in_frame_no_acc, 
-    #                 self.persons[person_id].goal
-    #             )
-    #             person_in_frame = PersonInFrame(
-    #                 id=person_id,
-    #                 position=person_in_frame_no_acc.position,
-    #                 velocity=person_in_frame_no_acc.velocity,
-    #                 acceleration=pred_acc
-    #             )
-    #             cur_frame_objects[person_id] = person_in_frame
+        step = 1
+        while len(recomputed_frames) > 0 and total_steps >= step:
+            recomputed_frame_no_acc = recomputed_frames[-1]
 
-    #             person_in_next_frame_no_acc = PersonInFrame(
-    #                 id=person_id,
-    #                 position=person_in_frame.position + person_in_frame.velocity * delta_time,
-    #                 velocity=person_in_frame.velocity + person_in_frame.acceleration * delta_time,
-    #                 acceleration=Acceleration.zero()
-    #             )
-    #             next_frame_objects_wo_acc[person_id] = person_in_next_frame_no_acc
+            features_dict: dict[int, self.Features] = {
+                person_id: self.Features.get_features(
+                    person=person,
+                    person_id=person_id,
+                    frame=recomputed_frame,
+                    obstacles=self.obstacles
+                )
+                for person_id, person in recomputed_frame_no_acc.items()
+                if not person_ids or person_id in person_ids
+            }
 
-    #         recomputed_frames[cur_frame_number] = Frame(
-    #             number=cur_frame_number, 
-    #             frame_objects=cur_frame_objects
-    #         )
+            preds_acc = predict_acc_func(features_dict.values())
 
-    #         if frame_id < len(self.frames) - 1:
-    #             # go forward in time
-    #             next_frame_number = frame_numbers[frame_id + 1]
-    #             delta_time = (next_frame_number - cur_frame_number) / self.fps
-    #             recomputed_frames[next_frame_number] = Frame(
-    #                 number=next_frame_number, 
-    #                 frame_objects=next_frame_objects_wo_acc
-    #             )
+            recomputed_frame = {**recomputed_frame_no_acc, **{
+                person_id: Person(
+                    position=recomputed_frame_no_acc[person_id].position,
+                    velocity=recomputed_frame_no_acc[person_id].velocity,
+                    goal=recomputed_frame_no_acc[person_id].goal,
+                    acceleration=pred_acc
+                )
+                for person_id, pred_acc in zip(features_dict.keys(), preds_acc)
+            }}
+            recomputed_frames[-1] = recomputed_frame
 
-    #     return Scene(
-    #         id=self.id,
-    #         obstacles=self.obstacles,
-    #         persons=self.persons,
-    #         frames=recomputed_frames,
-    #         fps=self.fps,
-    #         tag=self.tag,
-    #         dataset=self.dataset
-    #     )
+            next_recomputed_frame_no_acc = {
+                **(self.frames[step] if step in self.frames else {}),  # add newcomers
+                **{
+                    person_id: Person(
+                        position=person.position + person.velocity * delta_time,
+                        velocity=person.velocity + person.acceleration * delta_time,
+                        goal=person.goal,
+                        acceleration=Acceleration.zero()
+                    )
+                    for person_id, person in recomputed_frame.items()
+                }
+            }
+
+            # filter persons out of the scene
+            next_recomputed_frame_no_acc = {
+                person_id: person
+                for person_id, person in next_recomputed_frame_no_acc.items()
+                if person.position.is_within(self.bounding_box[0], self.bounding_box[1]) 
+            }
+            recomputed_frames.append(next_recomputed_frame_no_acc)
+
+        recomputed_frames_dict = {
+            first_frame_number + i * frame_step: frame for i, frame in enumerate(recomputed_frames)
+        }
+                
+        return Scene(
+            id=self.id,
+            obstacles=self.obstacles,
+            frames=recomputed_frames_dict,
+            fps=self.fps,
+            tag=self.tag
+        )
 
 Scenes = dict[str, Scene]
