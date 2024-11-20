@@ -57,13 +57,24 @@ class NeuralNetModel(TrainableModule):
             x = F.relu(layer(x))
         return self.fc_output(x)
 
-    def compute_loss(self, y_pred, y, *xs):
-        """Compute the loss of the model given the inputs, predictions, and target outputs."""
-        return self.loss(y_pred, y)
+    def compute_loss(self, y_pred, ys, *xs):
+        cur_positions = ys[0]
+        next_positions = ys[1]
+        delta_times = ys[2]
+        delta_times = delta_times.unsqueeze(-1).repeat(1, 2)
+        cur_accelerations = y_pred
+        next_pos_predicted = cur_positions + 0.5 * cur_accelerations * delta_times**2
+        return self.loss(next_pos_predicted, next_positions)
 
-    def compute_metrics(self, y_pred, y, *xs, training):
-        """Compute and return metrics given the inputs, predictions, and target outputs."""
-        self.metrics.update(y_pred, y)
+    def compute_metrics(self, y_pred, ys, *xs, training):
+        cur_positions = ys[0]
+        next_positions = ys[1]
+        delta_times = ys[2]
+        delta_times = delta_times.unsqueeze(-1).repeat(1, 2)
+        cur_accelerations = y_pred
+        next_pos_predicted = cur_positions + 0.5 * cur_accelerations * delta_times**2
+
+        self.metrics.update(next_pos_predicted, next_positions)
         return self.metrics.compute()
 
     # @staticmethod

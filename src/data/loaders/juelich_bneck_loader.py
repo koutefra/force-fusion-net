@@ -12,11 +12,12 @@ class JuelichBneckLoader(BaseLoader):
         self, 
         paths_and_names: list[tuple[str, str]], 
         sampling_step: int,
-        fdm_calculator: Optional[FiniteDifferenceCalculator]
+        fdm_calculator: Optional[FiniteDifferenceCalculator],
+        fps = 25.0
     ):
         self.paths_and_names = paths_and_names
         self.sampling_step = sampling_step
-        self.fps = 25.0 / sampling_step
+        self.fps = fps
         self.fdm_calculator = fdm_calculator
     
     BOUNDARIES = {

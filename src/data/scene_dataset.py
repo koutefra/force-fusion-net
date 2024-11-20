@@ -68,12 +68,12 @@ class SceneDataset:
                         json.dump(line_to_dump, f)
                         f.write("\n")
     @staticmethod
-    def load_features_from_ndjson(filepath: str) -> dict[str, dict[str, SceneFeatures]]:
+    def load_features_from_ndjson(filepath: str, n_samples: int | None = None) -> dict[str, dict[str, SceneFeatures]]:
         features = defaultdict(dict)
         grouped_data = defaultdict(lambda: defaultdict(list))
 
         with open(filepath, "r") as file:
-            for line in file:
+            for i, line in enumerate(file):
                 json_object = json.loads(line)
                 loader_name = json_object["loader"]
                 scene_id = json_object["scene"]
@@ -82,6 +82,8 @@ class SceneDataset:
                     "person": json_object["person"],
                     "features": json_object["features"],
                 })
+                if n_samples and i + 1 >= n_samples:
+                    break
 
         for loader_name, loader_scenes in grouped_data.items():
             for scene_id, scene_data in loader_scenes.items():

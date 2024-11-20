@@ -163,10 +163,26 @@ class Features:
         data = json.loads(json_data)
         return Features.from_dict(data)
 
+    def to_labeled_features(
+        self, 
+        cur_pos: Point2D = Point2D.zero(), 
+        next_pos: Point2D = Point2D.zero(), 
+        delta_time: float = 0.0
+    ) -> "LabeledFeatures":
+        return LabeledFeatures(
+            individual_features=self.individual_features,
+            interaction_features=self.interaction_features,
+            obstacle_features=self.obstacle_features,
+            cur_pos=cur_pos,
+            next_pos=next_pos,
+            delta_time=delta_time
+        )
+
 @dataclass(frozen=True)
 class LabeledFeatures(Features):
     cur_pos: Point2D
     next_pos: Point2D
+    delta_time: float
 
     @staticmethod
     def get_labeled_features(
@@ -174,16 +190,21 @@ class LabeledFeatures(Features):
         person_id: int,
         frame: Frame,
         next_frame: Frame,
+        frame_number: int,
+        next_frame_number: int,
+        fps: float,
         obstacles: list[BaseObstacle],
     ) -> "LabeledFeatures":
         next_position = next_frame[person_id].position
         base_features = Features.get_features(person, person_id, frame, obstacles)
+        delta_time = (next_frame_number - frame_number) / fps
         return LabeledFeatures(
             individual_features=base_features.individual_features,
             interaction_features=base_features.interaction_features,
             obstacle_features=base_features.obstacle_features,
             cur_pos=person.position,
-            next_pos=next_position
+            next_pos=next_position,
+            delta_time=delta_time
         )
 
     def to_tensor(
@@ -193,27 +214,38 @@ class LabeledFeatures(Features):
         precision: int = 6
     ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         individual_tensor, interaction_tensors, obstacle_tensors = super().to_tensor(device, dtype, precision)
+
         cur_pos_tensor = self.cur_pos.to_tensor(device, dtype, precision)
         next_pos_tensor = self.next_pos.to_tensor(device, dtype, precision)
-        return (individual_tensor, interaction_tensors, obstacle_tensors), (cur_pos_tensor, next_pos_tensor)
+        delta_time_tensor = torch.tensor(self.delta_time, device=device, dtype=dtype)
+
+        features = (individual_tensor, interaction_tensors, obstacle_tensors)
+        labels = (cur_pos_tensor, next_pos_tensor, delta_time_tensor)
+        return features, labels
 
     def to_ndjson(self) -> dict[str, Any]:
         features_json = super().to_ndjson()
-        features_json["label"] = {"cur_pos": self.cur_pos.to_list(), "next_pos": self.next_pos.to_list()}
+        features_json["label"] = {
+            "cur_pos": self.cur_pos.to_list(), 
+            "next_pos": self.next_pos.to_list(),
+            "dt": self.delta_time
+        }
         return features_json
 
     @staticmethod
     def from_dict(data: dict) -> "LabeledFeatures":
         base_features = Features.from_dict(data)
         label = data["label"]
-        cur_pos = Point2D(x=label["cur_pos"][0], y=data["cur_pos"][1])
-        next_pos = Point2D(x=label["next_pos"][0], y=data["next_pos"][1])
+        cur_pos = Point2D(x=label["cur_pos"][0], y=label["cur_pos"][1])
+        next_pos = Point2D(x=label["next_pos"][0], y=label["next_pos"][1])
+        delta_time = float(label['dt'])
         return LabeledFeatures(
             individual_features=base_features.individual_features,
             interaction_features=base_features.interaction_features,
             obstacle_features=base_features.obstacle_features,
             cur_pos=cur_pos,
-            next_pos=next_pos
+            next_pos=next_pos,
+            delta_time=delta_time
         )
 
     @staticmethod
@@ -237,7 +269,10 @@ class FrameFeatures:
     @staticmethod
     def get_frame_labeled_features(
         frame: Frame, 
-        next_frame: Frame, 
+        next_frame: Frame,
+        frame_number: int,
+        next_frame_number: int,
+        fps: float,
         obstacles: list[BaseObstacle]
     ) -> "FrameFeatures":
         frame_features = {}
@@ -246,7 +281,7 @@ class FrameFeatures:
             person = frame[person_id]
             if person.goal is not None and person.velocity is not None:
                 labeled_features = LabeledFeatures.get_labeled_features(
-                    person, person_id, frame, next_frame, obstacles
+                    person, person_id, frame, next_frame, frame_number, next_frame_number, fps, obstacles
                 )
                 frame_features[person_id] = labeled_features
         return FrameFeatures(features=frame_features)
@@ -298,7 +333,9 @@ class SceneFeatures:
             next_frame_number = frame_numbers[frame_id + 1]
             frame = scene.frames[frame_number]
             next_frame = scene.frames[next_frame_number]
-            frame_features = FrameFeatures.get_frame_labeled_features(frame, next_frame, scene.obstacles)
+            frame_features = FrameFeatures.get_frame_labeled_features(
+                frame, next_frame, frame_number, next_frame_number, scene.fps, scene.obstacles
+            )
             scene_features[frame_number] = frame_features
         return SceneFeatures(features=scene_features)
 

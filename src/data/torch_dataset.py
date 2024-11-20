@@ -29,9 +29,19 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         data: list[tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]
     ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         input_features, labels = zip(*data)
+
+        # input
         x_individual, x_interaction, x_obstacle = zip(*input_features)
         x_individual_stack = torch.stack(x_individual).to(self.device)
         x_interaction_stack = pad_sequence(x_interaction, batch_first=True).to(self.device)
         x_obstacle_stack = pad_sequence(x_obstacle, batch_first=True).to(self.device)
-        labels_stack = torch.stack(labels).to(self.device)
-        return (x_individual_stack, x_interaction_stack, x_obstacle_stack), labels_stack
+
+        # label
+        cur_pos, next_pos, delta_times = zip(*labels)
+        cur_pos_stack = torch.stack(cur_pos).to(self.device)
+        next_pos_stack = torch.stack(next_pos).to(self.device)
+        delta_time_stack = torch.stack(delta_times).to(self.device)
+
+        features = (x_individual_stack, x_interaction_stack, x_obstacle_stack)
+        labels = (cur_pos_stack, next_pos_stack, delta_time_stack)
+        return features, labels

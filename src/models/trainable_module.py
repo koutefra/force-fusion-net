@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import os
+from abc import ABC, abstractmethod
 
 import torch
 import torchmetrics
 
 
-class TrainableModule(torch.nn.Module):
+class TrainableModule(torch.nn.Module, ABC):
     """A simple Keras-like module for training with raw PyTorch.
 
     The module provides fit/evaluate/predict methods, computes loss and metrics,
@@ -70,11 +71,12 @@ class TrainableModule(torch.nn.Module):
             epoch_message = f"Epoch={epoch+1}/{epochs}"
             data_and_progress = self._tqdm(
                 dataloader, epoch_message, unit="batch", leave=False, disable=None if verbose == 2 else not verbose)
-            for xs, y in data_and_progress:
+            for xs, ys in data_and_progress:
                 assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
-                assert isinstance(y, torch.Tensor), "The output must be a single tensor."
-                xs, y = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,))), y.to(self.device)
-                logs = self.train_step(xs, y)
+                assert isinstance(ys, (tuple, torch.Tensor)), "The output must be either a single tensor or a tuple."
+                xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
+                ys = tuple(y.to(self.device) for y in (ys if isinstance(ys, tuple) else (ys,)))
+                logs = self.train_step(xs, ys)
                 message = [epoch_message] + [f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()]
                 data_and_progress.set_description(" ".join(message), refresh=False)
             if dev is not None:
@@ -87,13 +89,13 @@ class TrainableModule(torch.nn.Module):
                               *[f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()])
         return logs
 
-    def train_step(self, xs, y):
+    def train_step(self, xs, ys):
         """An overridable method performing a single training step.
 
         A dictionary with the loss and metrics should be returned."""
         self.zero_grad()
         y_pred = self.forward(*xs)
-        loss = self.compute_loss(y_pred, y, *xs)
+        loss = self.compute_loss(y_pred, ys, *xs)
         loss.backward()
         with torch.no_grad():
             self.optimizer.step()
@@ -101,16 +103,15 @@ class TrainableModule(torch.nn.Module):
             self.loss_metric.update(loss)
             return {"loss": self.loss_metric.compute()} \
                 | ({"lr": self.schedule.get_last_lr()[0]} if self.schedule else {}) \
-                | self.compute_metrics(y_pred, y, *xs, training=True)
+                | self.compute_metrics(y_pred, ys, *xs, training=True)
 
-    def compute_loss(self, y_pred, y, *xs):
-        """Compute the loss of the model given the inputs, predictions, and target outputs."""
-        return self.loss(y_pred, y)
+    @abstractmethod
+    def compute_loss(self, y_pred, ys, *xs):
+        pass
 
-    def compute_metrics(self, y_pred, y, *xs, training):
-        """Compute and return metrics given the inputs, predictions, and target outputs."""
-        self.metrics.update(y_pred, y)
-        return self.metrics.compute()
+    @abstractmethod
+    def compute_metrics(self, y_pred, ys, *xs, training):
+        pass
 
     def evaluate(self, dataloader, verbose=1):
         """An evaluation of the model on the given dataset.
@@ -121,22 +122,23 @@ class TrainableModule(torch.nn.Module):
         self.eval()
         self.loss_metric.reset()
         self.metrics.reset()
-        for xs, y in dataloader:
+        for xs, ys in dataloader:
             assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
-            assert isinstance(y, torch.Tensor), "The output must be a single tensor."
-            xs, y = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,))), y.to(self.device)
-            logs = self.test_step(xs, y)
+            assert isinstance(ys, (tuple, torch.Tensor)), "The output must be either a single tensor or a tuple."
+            xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
+            ys = tuple(y.to(self.device) for y in (ys if isinstance(ys, tuple) else (ys,)))
+            logs = self.test_step(xs, ys)
         verbose and print("Evaluation", *[f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()])
         return logs
 
-    def test_step(self, xs, y):
+    def test_step(self, xs, ys):
         """An overridable method performing a single evaluation step.
 
         A dictionary with the loss and metrics should be returned."""
         with torch.no_grad():
             y_pred = self.forward(*xs)
-            self.loss_metric.update(self.compute_loss(y_pred, y, *xs))
-            return {"loss": self.loss_metric.compute()} | self.compute_metrics(y_pred, y, *xs, training=False)
+            self.loss_metric.update(self.compute_loss(y_pred, ys, *xs))
+            return {"loss": self.loss_metric.compute()} | self.compute_metrics(y_pred, ys, *xs, training=False)
 
     def predict(self, dataloader, as_numpy=True):
         """Compute predictions for the given dataset.
