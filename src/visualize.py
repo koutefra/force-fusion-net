@@ -5,9 +5,12 @@ from data.loaders.trajnet_loader import TrajnetLoader
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
 from visualization.visualization import Visualizer
 from models.neural_net_predictor import NeuralNetPredictor
+from models.neural_net_model import NeuralNetModel
+from models.social_force_model import SocialForceModel
 from models.social_force_predictor import SocialForcePredictor
 from data.fdm_calculator import FiniteDifferenceCalculator
 import random
+import json
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
@@ -16,8 +19,8 @@ parser.add_argument("--dataset_name", required=True, type=str, help="The dataset
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
 parser.add_argument("--predictor_type",  type=str, help="The trained model type.")
 parser.add_argument("--scenes_to_show", default=[1], nargs='*', type=int, help="IDs of scenes to visualize. If None, random scenes are selected.")
-parser.add_argument("--sampling_step", default=5, required=True, type=int, help="Sampling step.")
-parser.add_argument("--fdm_win_size", default=20, required=True, type=int, help="Finitie difference method window size.")
+parser.add_argument("--sampling_step", default=5, type=int, help="Sampling step.")
+parser.add_argument("--fdm_win_size", default=20, type=int, help="Finitie difference method window size.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 
 def main(args: argparse.Namespace) -> None:
@@ -36,23 +39,28 @@ def main(args: argparse.Namespace) -> None:
     predictor = None
     if args.predictor_path:
         if args.predictor_type == 'neural_net':
-            predictor = NeuralNetPredictor(args.predictor_path, device='cpu')
+            model = NeuralNetModel.from_weight_file(args.predictor_path)
+            predictor = NeuralNetPredictor(model)
         elif args.predictor_type == 'social_force':
-            predictor = SocialForcePredictor(args.predictor_path)
+            with open(args.predictor_path, "r") as file:
+                param_grid = json.load(file)
+            delta_time = 0.4
+            model = SocialForceModel(delta_time=delta_time, **param_grid)
+            predictor = SocialForcePredictor(model)
         else:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
         
-    # run visualization
     visualizer = Visualizer()
-    for scene_id in args.scenes_to_show:
-        scene = scene_dataset.get_scene(args.dataset_name, scene_id)
+    scene_id = "b090"
+    scene = scene_dataset.scenes['juelich_bneck'][scene_id]
+    scene_transformed = scene.simulate(
+        predict_acc_func=predictor.predict,
+        frame_step=args.sampling_step,
+        total_steps=100
+    )
 
-        preds = []
-        # if predictor:
-            # new_trajectory = scene.simulate_trajectory(predictor.predict_frame)
-            # preds = [(args.predictor_type, new_trajectory, Visualizer.default_colors["skin_orange"])] 
-
-        visualizer.visualize(scene, time_scale=1.0)
+    visualizer.visualize(scene_transformed, time_scale=1.0/args.sampling_step)
+    # visualizer.visualize(scene, time_scale=1/args.sampling_step)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))

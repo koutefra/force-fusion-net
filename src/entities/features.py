@@ -1,7 +1,7 @@
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 from entities.scene import Scene, BaseObstacle, Frame, Person
-from entities.vector2d import Point2D
+from entities.vector2d import Point2D, Velocity
 from entities.obstacle import PointObstacle, LineObstacle
 import torch
 from typing import Any
@@ -64,7 +64,7 @@ class InteractionFeatures(FeatureBase):
     def get_interaction_features(person: Person, person_id: int, frame: Frame) -> list["InteractionFeatures"]:
         interaction_features = []
         for other_person_id, other_person in frame.items():
-            if person_id == other_person_id:
+            if person_id == other_person_id or other_person.velocity is None:
                 continue
             
             distance = (person.position - other_person.position).magnitude()
@@ -114,6 +114,8 @@ class Features:
 
     @staticmethod
     def get_features(person: Person, person_id: int, frame: Frame, obstacles: list[BaseObstacle]) -> "Features":
+        if person.velocity is None or person.goal is None:
+            raise ValueError(f'Person {person_id} has either velocity, goal, or both equal to None')
         individual_features = IndividualFeatures.get_individual_features(person, person.goal)
         interaction_features = InteractionFeatures.get_interaction_features(person, person_id, frame)
         obstacle_features = ObstacleFeatures.get_obstacle_features(person, obstacles)
@@ -167,6 +169,7 @@ class Features:
         self, 
         cur_pos: Point2D = Point2D.zero(), 
         next_pos: Point2D = Point2D.zero(), 
+        cur_vel: Velocity = Velocity.zero(), 
         delta_time: float = 0.0
     ) -> "LabeledFeatures":
         return LabeledFeatures(
@@ -175,6 +178,7 @@ class Features:
             obstacle_features=self.obstacle_features,
             cur_pos=cur_pos,
             next_pos=next_pos,
+            cur_vel=cur_vel,
             delta_time=delta_time
         )
 
@@ -182,6 +186,7 @@ class Features:
 class LabeledFeatures(Features):
     cur_pos: Point2D
     next_pos: Point2D
+    cur_vel: Velocity
     delta_time: float
 
     @staticmethod
@@ -196,6 +201,8 @@ class LabeledFeatures(Features):
         obstacles: list[BaseObstacle],
     ) -> "LabeledFeatures":
         next_position = next_frame[person_id].position
+        if person.velocity is None or person.goal is None:
+            raise ValueError(f'Person {person_id} has either velocity, goal, or both equal to None')
         base_features = Features.get_features(person, person_id, frame, obstacles)
         delta_time = (next_frame_number - frame_number) / fps
         return LabeledFeatures(
@@ -204,6 +211,7 @@ class LabeledFeatures(Features):
             obstacle_features=base_features.obstacle_features,
             cur_pos=person.position,
             next_pos=next_position,
+            cur_vel=person.velocity,
             delta_time=delta_time
         )
 
@@ -217,10 +225,11 @@ class LabeledFeatures(Features):
 
         cur_pos_tensor = self.cur_pos.to_tensor(device, dtype, precision)
         next_pos_tensor = self.next_pos.to_tensor(device, dtype, precision)
+        cur_vel_tensor = self.cur_vel.to_tensor(device, dtype, precision)
         delta_time_tensor = torch.tensor(self.delta_time, device=device, dtype=dtype)
 
         features = (individual_tensor, interaction_tensors, obstacle_tensors)
-        labels = (cur_pos_tensor, next_pos_tensor, delta_time_tensor)
+        labels = (cur_pos_tensor, next_pos_tensor, cur_vel_tensor, delta_time_tensor)
         return features, labels
 
     def to_ndjson(self) -> dict[str, Any]:
@@ -228,6 +237,7 @@ class LabeledFeatures(Features):
         features_json["label"] = {
             "cur_pos": self.cur_pos.to_list(), 
             "next_pos": self.next_pos.to_list(),
+            "cur_vel": self.cur_vel.to_list(), 
             "dt": self.delta_time
         }
         return features_json
@@ -238,6 +248,7 @@ class LabeledFeatures(Features):
         label = data["label"]
         cur_pos = Point2D(x=label["cur_pos"][0], y=label["cur_pos"][1])
         next_pos = Point2D(x=label["next_pos"][0], y=label["next_pos"][1])
+        cur_vel = Velocity(x=label["cur_vel"][0], y=label["cur_vel"][1])
         delta_time = float(label['dt'])
         return LabeledFeatures(
             individual_features=base_features.individual_features,
@@ -245,6 +256,7 @@ class LabeledFeatures(Features):
             obstacle_features=base_features.obstacle_features,
             cur_pos=cur_pos,
             next_pos=next_pos,
+            cur_vel=cur_vel,
             delta_time=delta_time
         )
 

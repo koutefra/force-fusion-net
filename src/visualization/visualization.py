@@ -40,12 +40,12 @@ class Visualizer:
 
     def __init__(
         self, 
-        target_screen_size: int = 1000, 
+        target_screen_size: int = 1200, 
         circle_radius: int = 10, 
-        text_size: int = 15,
-        vector_line_width: int = 3, 
-        arrow_size: int = 10, 
-        obstacle_line_width: int = 4,
+        text_size: int = 20,
+        vector_line_width: int = 2, 
+        arrow_size: int = 8, 
+        obstacle_line_width: int = 5,
         arrow_angle: float = math.pi / 6
     ) -> None:
         self.target_screen_size = target_screen_size
@@ -101,6 +101,20 @@ class Visualizer:
         scaled_position = (person.position - min_pos) * spatial_scale
         pygame.draw.circle(screen, color, scaled_position.to_tuple(), self.circle_radius)
 
+        # Draw the goal as a rectangle if it exists
+        if person.goal:
+            scaled_goal_position = (person.goal - min_pos) * spatial_scale
+            pygame.draw.rect(
+                screen,
+                color,
+                pygame.Rect(
+                    scaled_goal_position.x - self.circle_radius / 2,
+                    scaled_goal_position.y - self.circle_radius / 2,
+                    self.circle_radius,
+                    self.circle_radius
+                )
+            )
+
         vectors = [
             (person.velocity * spatial_scale if person.velocity else None, self.velocity_color),
             (person.acceleration * spatial_scale if person.acceleration else None, self.acceleration_color)
@@ -141,8 +155,8 @@ class Visualizer:
             elif isinstance(obstacle, PointObstacle):
                 scaled_position = (obstacle.position - min_pos) * spatial_scale
                 rect = pygame.Rect(
-                    scaled_position.x, 
-                    scaled_position.y, 
+                    scaled_position.x - self.obstacle_line_width / 2, 
+                    scaled_position.y - self.obstacle_line_width / 2, 
                     self.obstacle_line_width, 
                     self.obstacle_line_width
                 )
@@ -170,7 +184,7 @@ class Visualizer:
         frame: Frame, 
         min_pos: Point2D, 
         spatial_scale: float,
-        person_ids: Optional[list[int]]
+        person_ids: Optional[list[int]] = None
     ) -> None:
         """Draw all persons and obstacles for a single frame."""
         for person_id, person in frame.items():
@@ -181,7 +195,7 @@ class Visualizer:
     def draw_scene(
         self, 
         scene: Scene, 
-        person_ids: Optional[list[int]],
+        person_ids: Optional[list[int]] = None,
         time_scale: float = 1.0
     ) -> None:
         """Initialize and display the scene frame by frame."""
@@ -189,7 +203,7 @@ class Visualizer:
         min_pos, max_pos = scene.bounding_box
         screen, spatial_scale = self.setup_screen(scene, min_pos, max_pos)
         clock = pygame.time.Clock()
-        scaled_fps = int(scene.fps * time_scale)
+        scaled_fps = float(scene.fps * time_scale)
         font = pygame.font.SysFont(None, self.text_size)
         labels = [
             ("Focus Persons", self.focus_person_color),
@@ -213,7 +227,7 @@ class Visualizer:
     def visualize(
         self, 
         scene: Scene, 
-        person_ids: Optional[list[int]],
+        person_ids: Optional[list[int]] = None,
         time_scale: float = 1.0
     ) -> None:
         """Public method to visualize the scene."""

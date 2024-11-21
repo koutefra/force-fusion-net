@@ -1,0 +1,12 @@
+model_type: social_force
+param_ranges:
+  A: [1.0, 3.0, 5.0]  # Strength of repulsive force
+  B: [0.2, 0.4, 0.6]  # Range of repulsive force
+  tau: [0.5, 1.0, 1.5]  # Relaxation time
+  radius: [1.0, 1.5, 2.0]  # Interaction radius
+  desired_speed: [1.2, 1.5, 2.0]
+
+dataset_path: "./data/preprocessed/juelich_bneck_labeled_sstep5.ndjson"
+dataset_format: "ndjson"
+dataset_fps: 12.5
+n_samples: 20000

@@ -8,16 +8,17 @@ from typing import Optional
 from tqdm import tqdm
 
 class JuelichBneckLoader(BaseLoader):
+    # fps should be 12.5, according to this: https://arxiv.org/pdf/physics/0702004
+    fps = 12.5
+
     def __init__(
         self, 
         paths_and_names: list[tuple[str, str]], 
         sampling_step: int,
         fdm_calculator: Optional[FiniteDifferenceCalculator],
-        fps = 25.0
     ):
         self.paths_and_names = paths_and_names
         self.sampling_step = sampling_step
-        self.fps = fps
         self.fdm_calculator = fdm_calculator
     
     BOUNDARIES = {
@@ -52,10 +53,10 @@ class JuelichBneckLoader(BaseLoader):
         dataset_name: str, 
         sampling_step: int,
         fps: float,
-        goal_position: Point2D = Point2D(x=499, y=200),
+        goal_position: Point2D = Point2D(x=490, y=0),
         fdm_calculator: Optional[FiniteDifferenceCalculator] = None
     ) -> Scene:
-        parsed_file = JuelichBneckLoader.parse_file(path, sampling_step)
+        parsed_file = JuelichBneckLoader.parse_file(path)
 
         trajectories: Trajectories = defaultdict(lambda: OrderedDict())
         for person_id, frame_number, x, y in parsed_file:
@@ -68,6 +69,14 @@ class JuelichBneckLoader(BaseLoader):
             trajectories = fdm_calculator.compute_velocities(trajectories, fps)
             trajectories = fdm_calculator.compute_accelerations(trajectories, fps)
             
+        # Apply sampling step using functional style
+        trajectories = {
+            person_id: OrderedDict(filter(
+                lambda item: item[0] % sampling_step == 0, frames.items()
+            ))
+            for person_id, frames in trajectories.items()
+        }
+
         obstacles = [
             # time 100 for conversion from meters to centimeters
             LineObstacle((obstacle[i] * 100, obstacle[i + 1] * 100)) 
@@ -83,7 +92,7 @@ class JuelichBneckLoader(BaseLoader):
         )
 
     @staticmethod
-    def parse_file(path: str, sampling_step: int) -> list[tuple[int, int, float, float]]:
+    def parse_file(path: str) -> list[tuple[int, int, float, float]]:
         parsed_data = []
         with open(path, 'r') as file:
             for line in file:
@@ -92,8 +101,7 @@ class JuelichBneckLoader(BaseLoader):
                 frame_number = int(parts[1])
                 position_y = float(parts[2])
                 position_x = float(parts[3])
-                if frame_number % sampling_step == 0:
-                    parsed_data.append((person_id, frame_number, position_x, position_y))
+                parsed_data.append((person_id, frame_number, position_x, position_y))
         return parsed_data
 
     @staticmethod

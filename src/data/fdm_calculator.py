@@ -51,7 +51,9 @@ class FiniteDifferenceCalculator:
             window = [
                 getattr(person_trajectory[frame_numbers[fid]], in_prop)
                 for fid in window_frame_ids
-                if frame_numbers[fid] in person_trajectory
+                if frame_numbers[fid] in person_trajectory 
+                and
+                getattr(person_trajectory[frame_numbers[fid]], in_prop) is not None
             ]
 
             if len(window) == self.win_size:
@@ -63,5 +65,7 @@ class FiniteDifferenceCalculator:
                     Velocity.from_points(window, time_window) if out_prop == "velocity"
                     else Acceleration.from_velocities(window, time_window)
                 )
-                computed_results[frame_number] = computed_value  # Store the computed result in a new dict
+            else:
+                computed_value = None
+            computed_results[frame_number] = computed_value  # Store the computed result in a new dict
         return computed_results

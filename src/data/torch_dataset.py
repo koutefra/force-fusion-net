@@ -37,11 +37,12 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         x_obstacle_stack = pad_sequence(x_obstacle, batch_first=True).to(self.device)
 
         # label
-        cur_pos, next_pos, delta_times = zip(*labels)
+        cur_pos, next_pos, cur_vel, delta_times = zip(*labels)
         cur_pos_stack = torch.stack(cur_pos).to(self.device)
         next_pos_stack = torch.stack(next_pos).to(self.device)
+        cur_vel_stack = torch.stack(cur_vel).to(self.device)
         delta_time_stack = torch.stack(delta_times).to(self.device)
 
         features = (x_individual_stack, x_interaction_stack, x_obstacle_stack)
-        labels = (cur_pos_stack, next_pos_stack, delta_time_stack)
+        labels = (cur_pos_stack, next_pos_stack, cur_vel_stack, delta_time_stack)
         return features, labels

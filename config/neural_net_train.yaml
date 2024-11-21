@@ -1,12 +1,11 @@
+model_type: neural_net
 batch_size: 64
-epochs: 3
+epochs: 7
 learning_rate: 1e-3
 interaction_out_dim: 512
 obstacle_out_dim: 512
-hidden_sizes: [1024]
+hidden_sizes: [1048]
 val_ratio: 0.1
 
-datasets:
-  - name: "juelich_bneck"
-    path: "./data/preprocessed/juelich_bneck_labeled_sstep5.ndjson"
-    format: "ndjson"
+dataset_path: "./data/preprocessed/juelich_bneck_labeled_sstep5.ndjson"
+dataset_format: "ndjson"
