@@ -5,19 +5,18 @@ import math
 class SocialForceModel:
     def __init__(
         self, 
-        delta_time: float,
-        A: float = 1.5, 
-        B: float = 40, 
-        tau: float = 1.0, 
-        radius: float = 150, 
-        desired_speed: float = 150,
+        param_valus_to_cm: bool, 
+        A: float = 3.0,  # Interaction force constant, (m/s^(-2)) 
+        B: float = 0.3,  # Interaction decay constant, m
+        tau: float = 0.3,  # Relaxation time constant, s
+        desired_speed: float = 0.8,  # m/s
     ):
-        self.delta_time = delta_time
-        self.A = 0.8  # Interaction force constant
-        self.B = 50  # Interaction decay constant
-        self.radius = 150  # Interaction radius
-        self.tau = 1.0 * 12.5 # delta_time  # Relaxation time constant
-        self.desired_speed = 70
+        distance_scale = 100 if param_valus_to_cm else 1
+
+        self.A = A * distance_scale
+        self.B = B * distance_scale
+        self.tau = tau
+        self.desired_speed = desired_speed * distance_scale
 
     def _desired_force(self, f: IndividualFeatures) -> Acceleration:
         dir_to_goal = Point2D(x=f.direction_x_to_goal, y=f.direction_y_to_goal)
@@ -32,9 +31,9 @@ class SocialForceModel:
         total_force_y = 0.0
 
         for direction, distance in features:
-            force_magnitude = self.A * math.exp((self.radius - distance) / self.B)
-            total_force_x += direction.x * force_magnitude
-            total_force_y += direction.y * force_magnitude
+            force_magnitude = self.A * math.exp(-distance / self.B)
+            total_force_x += - direction.x * force_magnitude
+            total_force_y += - direction.y * force_magnitude
 
         return Acceleration(x=total_force_x, y=total_force_y)
 

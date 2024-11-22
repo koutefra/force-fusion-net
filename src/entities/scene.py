@@ -63,19 +63,19 @@ class Scene:
     def simulate(
         self, 
         predict_acc_func: Callable[[list["Features"]], list[Acceleration]],
-        frame_step: int,
         total_steps: int,
+        goal_radius: float = 100,
         person_ids: Optional[list[int]] = None
     ) -> "Scene":
         from entities.features import Features
-        first_frame_number = list(self.frames.keys())[0]
-        first_frame_persons = self.frames[first_frame_number]
+        frame_numbers = list(self.frames.keys())
+        frame_step = frame_numbers[1] - frame_numbers[0]
+        first_frame_persons = self.frames[frame_numbers[0]]
         delta_time = frame_step / self.fps
-        print(delta_time)
-        recomputed_frames = {first_frame_number: first_frame_persons}
+        recomputed_frames = {frame_numbers[0]: first_frame_persons}
 
         step = 0
-        frame_number = first_frame_number
+        frame_number = frame_numbers[0]
         next_frame_number = frame_number + frame_step
         with tqdm(total=total_steps, initial=step, desc="Simulation processing steps", unit="step") as pbar:
             while len(recomputed_frames) > 0 and total_steps > step:
@@ -120,22 +120,23 @@ class Scene:
                     }
                 }
 
-                import numpy as np
-                print(
-                    np.mean(
-                        [
-                            person.acceleration.magnitude() 
-                            for pid, person in recomputed_frame.items()
-                            if person.acceleration
-                        ]
-                    )
-                )
+                # import numpy as np
+                # print(
+                #     np.mean(
+                #         [
+                #             person.acceleration.magnitude() 
+                #             for pid, person in recomputed_frame.items()
+                #             if person.acceleration
+                #         ]
+                #     )
+                # )
 
                 # filter persons out of the scene
                 next_recomputed_frame_no_acc = {
                     person_id: person
                     for person_id, person in next_recomputed_frame_no_acc.items()
                     if person.position.is_within(self.bounding_box[0], self.bounding_box[1]) 
+                    and not person.position.is_within(person.goal - goal_radius, person.goal + goal_radius)
                 }
                 recomputed_frames[next_frame_number] = next_recomputed_frame_no_acc
 
