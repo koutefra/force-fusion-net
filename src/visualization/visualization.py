@@ -4,8 +4,7 @@ import shutil
 import imageio
 from pygame import Surface
 from entities.vector2d import Point2D
-from entities.scene import Scene, Person, Frame
-from entities.obstacle import BaseObstacle, PointObstacle, LineObstacle
+from entities.scene import Scene, Person, Frame, Obstacle
 import math
 import sys
 from typing import Optional
@@ -145,35 +144,21 @@ class Visualizer:
     def draw_obstacles(
         self, 
         screen: Surface, 
-        obstacles: list[BaseObstacle], 
+        obstacles: list[Obstacle], 
         min_pos: Point2D, 
         spatial_scale: float
     ) -> None:
         """Draw all obstacles as connected lines between each pair of vertices."""
         for obstacle in obstacles:
-            if isinstance(obstacle, LineObstacle):
-                scaled_start_point = (obstacle.line[0] - min_pos) * spatial_scale
-                scaled_end_point = (obstacle.line[1] - min_pos) * spatial_scale
-                pygame.draw.line(
-                    screen, 
-                    self.obstacle_color, 
-                    scaled_start_point, 
-                    scaled_end_point, 
-                    width=self.obstacle_line_width
-                )
-            elif isinstance(obstacle, PointObstacle):
-                scaled_position = (obstacle.position - min_pos) * spatial_scale
-                rect = pygame.Rect(
-                    scaled_position.x - self.obstacle_line_width / 2, 
-                    scaled_position.y - self.obstacle_line_width / 2, 
-                    self.obstacle_line_width, 
-                    self.obstacle_line_width
-                )
-                pygame.draw.rect(
-                    screen, 
-                    self.obstacle_color, 
-                    rect
-                )
+            scaled_start_point = (obstacle.start_point - min_pos) * spatial_scale
+            scaled_end_point = (obstacle.end_point - min_pos) * spatial_scale
+            pygame.draw.line(
+                screen, 
+                self.obstacle_color, 
+                scaled_start_point, 
+                scaled_end_point, 
+                width=self.obstacle_line_width
+            )
 
     def setup_screen(self, scene: Scene, min_pos: Point2D, max_pos: Point2D) -> tuple[Surface, float]:
         """Set up the pygame screen and scaling factor based on scene dimensions."""
@@ -220,15 +205,14 @@ class Visualizer:
         scaled_fps = float(scene.fps * time_scale)
         font = pygame.font.SysFont(None, self.text_size)
         labels = [
-            ("Focus Persons", self.focus_person_color),
-            ("Other Persons", self.other_person_color),
+            ("Persons", self.other_person_color),
             ("Velocity", self.velocity_color),
             ("Acceleration", self.acceleration_color),
         ]
 
         for frame_number, frame in scene.frames.items():
             self.draw_frame(screen, scene, frame_number, frame, min_pos, spatial_scale, person_ids)
-            self.draw_labels(screen, labels, font)
+            # self.draw_labels(screen, labels, font)
             pygame.display.flip()
             clock.tick(scaled_fps)
             screen.fill(self.background_color)

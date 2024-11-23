@@ -1,8 +1,7 @@
 from data.loaders.base_loader import BaseLoader
 from entities.vector2d import Point2D
 from collections import defaultdict, OrderedDict
-from entities.scene import Scene, Scenes, Trajectories, Person
-from entities.obstacle import LineObstacle
+from entities.scene import Scene, Scenes, Trajectories, Person, Obstacle
 from data.fdm_calculator import FiniteDifferenceCalculator
 from typing import Optional
 from tqdm import tqdm
@@ -79,7 +78,7 @@ class JuelichBneckLoader(BaseLoader):
 
         obstacles = [
             # time 100 for conversion from meters to centimeters
-            LineObstacle((obstacle[i] * 100, obstacle[i + 1] * 100)) 
+            Obstacle(start_point=obstacle[i] * 100, end_point=obstacle[i + 1] * 100) 
             for obstacle in JuelichBneckLoader.parse_polygon_string(JuelichBneckLoader.BOUNDARIES[dataset_name])
             for i in range(len(obstacle) - 1)
         ]

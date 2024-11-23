@@ -1,6 +1,6 @@
 from entities.scene import Scenes
 from data.loaders.base_loader import BaseLoader
-from entities.features import  SceneFeatures, Features
+from entities.features import  SceneFeatures
 from collections import defaultdict
 import json
 import pickle

@@ -1,8 +1,7 @@
 from dataclasses import dataclass, asdict
 from collections import defaultdict
-from entities.scene import Scene, BaseObstacle, Frame, Person
+from entities.scene import Scene, Obstacle, Frame, Person
 from entities.vector2d import Point2D, Velocity
-from entities.obstacle import PointObstacle, LineObstacle
 import torch
 import json
 from typing import Any
@@ -32,35 +31,34 @@ class FeatureBase:
 
 @dataclass(frozen=True)
 class IndividualFeatures(FeatureBase):
-    velocity_x: float
-    velocity_y: float
-    distance_to_goal: float
-    direction_x_to_goal: float
-    direction_y_to_goal: float
-    velocity_towards_goal: float
+    vel_x: float
+    vel_y: float
+    dist_to_goal: float
+    dir_x_to_goal: float
+    dir_y_to_goal: float
+    vel_towards_goal: float
 
     @staticmethod
     def get_individual_features(person: Person, goal_pos: Point2D) -> "IndividualFeatures":
         dist_to_goal = (person.position - goal_pos).magnitude()
         dir_to_goal = person.position.direction_to(goal_pos)
-        dir_to_goal_norm = dir_to_goal.normalize()
-        vel_towards_goal = person.velocity.dot(dir_to_goal_norm)
+        vel_towards_goal = person.velocity.dot(dir_to_goal)
         return IndividualFeatures(
-            velocity_x=person.velocity.x,
-            velocity_y=person.velocity.y,
-            distance_to_goal=dist_to_goal,
-            direction_x_to_goal=dir_to_goal.x,
-            direction_y_to_goal=dir_to_goal.y,
-            velocity_towards_goal=vel_towards_goal
+            vel_x=person.velocity.x,
+            vel_y=person.velocity.y,
+            dist_to_goal=dist_to_goal,
+            dir_x_to_goal=dir_to_goal.x,
+            dir_y_to_goal=dir_to_goal.y,
+            vel_towards_goal=vel_towards_goal
         )
 
 @dataclass(frozen=True)
 class InteractionFeatures(FeatureBase):
-    distance_to_person_p: float
-    direction_x_to_person_p: float
-    direction_y_to_person_p: float
-    relative_velocity_to_person_p: float
-    alignment_to_person_p: float
+    dist_to_p: float
+    dir_x_to_p: float
+    dir_y_to_p: float
+    rel_vel_to_p: float
+    alignment_to_p: float
 
     @staticmethod
     def get_interaction_features(person: Person, person_id: int, frame: Frame) -> list["InteractionFeatures"]:
@@ -75,36 +73,51 @@ class InteractionFeatures(FeatureBase):
             alignment = person.velocity.dot(direction_vector)
             
             interaction_features.append(InteractionFeatures(
-                distance_to_person_p=distance,
-                direction_x_to_person_p=direction_vector.x,
-                direction_y_to_person_p=direction_vector.y,
-                relative_velocity_to_person_p=relative_velocity,
-                alignment_to_person_p=alignment,
+                dist_to_p=distance,
+                dir_x_to_p=direction_vector.x,
+                dir_y_to_p=direction_vector.y,
+                rel_vel_to_p=relative_velocity,
+                alignment_to_p=alignment,
             ))
         return interaction_features
 
 @dataclass(frozen=True)
 class ObstacleFeatures(FeatureBase):
-    distance_to_obstacle_o: float
-    direction_x_to_obstacle_o: float
-    direction_y_to_obstacle_o: float
-    
+    dist_to_o_cls: float
+    dir_x_to_o_cls: float
+    dir_y_to_o_cls: float
+    dist_to_o_start: float
+    dir_x_to_o_start: float
+    dir_y_to_o_start: float
+    dist_to_o_end: float
+    dir_x_to_o_end: float
+    dir_y_to_o_end: float
+
     @staticmethod
-    def get_obstacle_features(person: Person, obstacles: list[BaseObstacle]) -> list["ObstacleFeatures"]:
+    def get_obstacle_features(person: Person, obstacles: list[Obstacle]) -> list["ObstacleFeatures"]:
         obstacle_features = []
         for obstacle in obstacles:
-            if isinstance(obstacle, PointObstacle):
-                distance = (person.position - obstacle.position).magnitude()
-                direction_vector = person.position.direction_to(obstacle.position)
-            elif isinstance(obstacle, LineObstacle):
-                closest_point = closest_point_on_line(person.position, obstacle.line[0], obstacle.line[1])
-                distance = (person.position - closest_point).magnitude()
-                direction_vector = person.position.direction_to(closest_point)
+            closest_point = closest_point_on_line(person.position, obstacle.start_point, obstacle.end_point)
+
+            dist_to_closest = (person.position - closest_point).magnitude()
+            dir_to_closest = person.position.direction_to(closest_point)
+
+            dist_to_start = (person.position - obstacle.start_point).magnitude()
+            dir_to_start = person.position.direction_to(obstacle.start_point)
+
+            dist_to_end = (person.position - obstacle.end_point).magnitude()
+            dir_to_end = person.position.direction_to(obstacle.end_point)
 
             obstacle_features.append(ObstacleFeatures(
-                distance_to_obstacle_o=distance,
-                direction_x_to_obstacle_o=direction_vector.x,
-                direction_y_to_obstacle_o=direction_vector.y,
+                dist_to_o_cls=dist_to_closest,
+                dir_x_to_o_cls=dir_to_closest.x,
+                dir_y_to_o_cls=dir_to_closest.y,
+                dist_to_o_start=dist_to_start,
+                dir_x_to_o_start=dir_to_start.x,
+                dir_y_to_o_start=dir_to_start.y,
+                dist_to_o_end=dist_to_end,
+                dir_x_to_o_end=dir_to_end.x,
+                dir_y_to_o_end=dir_to_end.y
             ))
         return obstacle_features
 
@@ -115,7 +128,7 @@ class Features:
     obstacle_features: list[ObstacleFeatures]
 
     @staticmethod
-    def get_features(person: Person, person_id: int, frame: Frame, obstacles: list[BaseObstacle]) -> "Features":
+    def get_features(person: Person, person_id: int, frame: Frame, obstacles: list[Obstacle]) -> "Features":
         if person.velocity is None or person.goal is None:
             raise ValueError(f'Person {person_id} has either velocity, goal, or both equal to None')
         individual_features = IndividualFeatures.get_individual_features(person, person.goal)
@@ -200,7 +213,7 @@ class LabeledFeatures(Features):
         frame_number: int,
         next_frame_number: int,
         fps: float,
-        obstacles: list[BaseObstacle],
+        obstacles: list[Obstacle],
     ) -> "LabeledFeatures":
         next_position = next_frame[person_id].position
         if person.velocity is None or person.goal is None:
@@ -272,7 +285,7 @@ class FrameFeatures:
         self.features = features  # person_id -> Features
 
     @staticmethod
-    def get_frame_features(frame: Frame, obstacles: list[BaseObstacle]) -> "FrameFeatures":
+    def get_frame_features(frame: Frame, obstacles: list[Obstacle]) -> "FrameFeatures":
         frame_features = {}
         for person_id, person in frame.items():
             if person.goal is not None and person.velocity is not None:
@@ -287,7 +300,7 @@ class FrameFeatures:
         frame_number: int,
         next_frame_number: int,
         fps: float,
-        obstacles: list[BaseObstacle]
+        obstacles: list[Obstacle]
     ) -> "FrameFeatures":
         frame_features = {}
         valid_person_ids = frame.keys() & next_frame.keys()

@@ -22,8 +22,8 @@ class SocialForceModel:
         self.desired_speed = desired_speed * distance_scale
 
     def _desired_force(self, f: IndividualFeatures) -> Acceleration:
-        dir_to_goal = Point2D(x=f.direction_x_to_goal, y=f.direction_y_to_goal)
-        velocity = Velocity(x=f.velocity_x, y=f.velocity_y)
+        dir_to_goal = Point2D(x=f.dir_x_to_goal, y=f.dir_y_to_goal)
+        velocity = Velocity(x=f.vel_x, y=f.vel_y)
         desired_velocity = dir_to_goal * self.desired_speed
         desired_acceleration = (desired_velocity - velocity) * (1 / self.tau)
         return Acceleration(desired_acceleration.x, desired_acceleration.y)
@@ -43,7 +43,7 @@ class SocialForceModel:
     def _interaction_force(self, fs: list[InteractionFeatures]) -> Acceleration:
         """Compute the total interaction force from all other pedestrians."""
         features = [
-            (Point2D(x=f.direction_x_to_person_p, y=f.direction_y_to_person_p), f.distance_to_person_p)
+            (Point2D(x=f.dir_x_to_p, y=f.dir_y_to_p), f.dist_to_p)
             for f in fs
         ]
         return self._compute_force(features, self.A_interaction, self.B_interaction)
@@ -51,7 +51,7 @@ class SocialForceModel:
     def _obstacle_force(self, fs: list[ObstacleFeatures]) -> Acceleration:
         """Compute the total force exerted by all obstacles."""
         features = [
-            (Point2D(x=f.direction_x_to_obstacle_o, y=f.direction_y_to_obstacle_o), f.distance_to_obstacle_o)
+            (Point2D(x=f.dir_x_to_o_cls, y=f.dir_y_to_o_cls), f.dist_to_o_cls)
             for f in fs
         ]
         return self._compute_force(features, self.A_obstacle, self.B_obstacle)

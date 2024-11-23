@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
 from entities.vector2d import Point2D, Velocity, Acceleration
-from entities.obstacle import BaseObstacle, PointObstacle, LineObstacle
 from collections import OrderedDict, defaultdict
 from typing import Optional, Callable
 from tqdm import tqdm
@@ -13,6 +12,11 @@ class Person:
     velocity: Optional[Velocity] = None
     acceleration: Optional[Acceleration] = None
 
+@dataclass(frozen=True)
+class Obstacle:
+    start_point: Point2D
+    end_point: Point2D
+
 Frame = dict[int, Person]  # person_id -> Person
 Frames = OrderedDict[int, Frame]  # frame_number -> Frame
 Trajectory = OrderedDict[int, Person]  # frane_number -> Person
@@ -21,7 +25,7 @@ Trajectories = dict[int, Trajectory]  # person_id -> Trajectory
 @dataclass(frozen=True)
 class Scene:
     id: str
-    obstacles: list[BaseObstacle]
+    obstacles: list[Obstacle]
     frames: Frames
     fps: float
     tag: Optional[list[int]] = None
@@ -40,14 +44,9 @@ class Scene:
                 
         # obstacles
         for obstacle in self.obstacles:
-            if isinstance(obstacle, PointObstacle):
-                pos = obstacle.position
-                x_min, y_min = min(x_min, pos.x), min(y_min, pos.y)
-                x_max, y_max = max(x_max, pos.x), max(y_max, pos.y)
-            elif isinstance(obstacle, LineObstacle):
-                for vertex in obstacle.line:  # Assuming `line` is a tuple of Point2D
-                    x_min, y_min = min(x_min, vertex.x), min(y_min, vertex.y)
-                    x_max, y_max = max(x_max, vertex.x), max(y_max, vertex.y)
+            for vertex in [obstacle.start_point, obstacle.end_point]:
+                x_min, y_min = min(x_min, vertex.x), min(y_min, vertex.y)
+                x_max, y_max = max(x_max, vertex.x), max(y_max, vertex.y)
         
         return Point2D(x=x_min, y=y_min), Point2D(x=x_max, y=y_max)
 
