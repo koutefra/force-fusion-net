@@ -4,8 +4,10 @@ from entities.scene import Scene, BaseObstacle, Frame, Person
 from entities.vector2d import Point2D, Velocity
 from entities.obstacle import PointObstacle, LineObstacle
 import torch
-from typing import Any
 import json
+from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
 
 @dataclass(frozen=True)
 class FeatureBase:
@@ -329,53 +331,86 @@ class SceneFeatures:
         self.features = features # frame_number -> FrameFeatures
 
     @staticmethod
-    def get_scene_features(scene: Scene) -> "SceneFeatures":
+    def get_scene_features(scene: Scene, print_progress: bool = True) -> "SceneFeatures":
         scene_features = {}
-        for frame_number, frame in scene.frames.items():
-            frame_features = FrameFeatures.get_frame_features(frame, scene.obstacles)
-            scene_features[frame_number] = frame_features
+        with ThreadPoolExecutor() as executor:
+            future_to_frame = {
+                executor.submit(FrameFeatures.get_frame_features, scene.frames[frame_number], scene.obstacles): frame_number
+                for frame_number in scene.frames
+            }
+            if print_progress:
+                futures = tqdm(future_to_frame, desc="Processing frames")
+            else:
+                futures = future_to_frame
+            for future in futures:
+                frame_number = future_to_frame[future]
+                scene_features[frame_number] = future.result()
         return SceneFeatures(features=scene_features)
 
     @staticmethod
-    def get_scene_labeled_features(scene: Scene) -> "SceneFeatures":
+    def get_scene_labeled_features(scene: Scene, print_progress: bool = True) -> "SceneFeatures":
         scene_features = {}
         frame_numbers = list(scene.frames.keys())
-        for frame_id in range(len(frame_numbers) - 1):  # Stop at the second-to-last frame
-            frame_number = frame_numbers[frame_id]
-            next_frame_number = frame_numbers[frame_id + 1]
-            frame = scene.frames[frame_number]
-            next_frame = scene.frames[next_frame_number]
-            frame_features = FrameFeatures.get_frame_labeled_features(
-                frame, next_frame, frame_number, next_frame_number, scene.fps, scene.obstacles
-            )
-            scene_features[frame_number] = frame_features
+        with ThreadPoolExecutor() as executor:
+            future_to_frame = {
+                executor.submit(
+                    FrameFeatures.get_frame_labeled_features,
+                    scene.frames[frame_numbers[frame_id]],
+                    scene.frames[frame_numbers[frame_id + 1]],
+                    frame_numbers[frame_id],
+                    frame_numbers[frame_id + 1],
+                    scene.fps,
+                    scene.obstacles
+                ): frame_numbers[frame_id]
+                for frame_id in range(len(frame_numbers) - 1)  # Exclude the last frame as it has no next frame
+            }
+            if print_progress:
+                futures = tqdm(future_to_frame, desc="Processing frames")
+            else:
+                futures = future_to_frame
+            for future in futures:
+                frame_number = future_to_frame[future]
+                scene_features[frame_number] = future.result()
         return SceneFeatures(features=scene_features)
 
+
     def to_list(self) -> list[Features]:
-        return [feature for frame_features in self.features.values() for feature in frame_features.to_list()]
+        with ThreadPoolExecutor() as executor:
+            list_of_features = list(executor.map(lambda x: x.to_list(), self.features.values()))
+        return [feature for sublist in list_of_features for feature in sublist]
 
     def to_ndjson(self) -> list[dict]:
-        return [
-            {
-                "frame_number": frame_number,
-                "person": f_features["person"],
-                "features": f_features["features"]
-            }
-            for frame_number, frame_features in self.features.items()
-            for f_features in frame_features.to_ndjson()
-        ]
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(
+                lambda item: [
+                    {"frame_number": item[0], "person": f["person"], "features": f["features"]}
+                    for f in item[1].to_ndjson()
+                ],
+                self.features.items()
+            ))
+        return [item for sublist in results for item in sublist]
 
     @staticmethod
-    def from_dict(data: list[dict]) -> "SceneFeatures":
+    def from_dict(data: list[dict], print_progress: bool = True) -> "SceneFeatures":
         grouped_data = defaultdict(list)
         for item in data:
             grouped_data[item["frame_number"]].append(item)
 
-        features = {
-            frame_number: FrameFeatures.from_dict(frame_data)
-            for frame_number, frame_data in grouped_data.items()
-        }
-
+        with ThreadPoolExecutor() as executor:
+            tasks = [(frame_number, frame_data) for frame_number, frame_data in grouped_data.items()]
+            if print_progress:
+                results = list(tqdm(executor.map(
+                    lambda x: (x[0], FrameFeatures.from_dict(x[1])),
+                    tasks),
+                    total=len(tasks),
+                    desc="Processing frames"
+                ))
+            else:
+                results = list(executor.map(
+                    lambda x: (x[0], FrameFeatures.from_dict(x[1])),
+                    tasks)
+                )
+        features = dict(results)
         return SceneFeatures(features=features)
 
     @staticmethod

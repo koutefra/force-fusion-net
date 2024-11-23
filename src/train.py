@@ -20,8 +20,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=True, type=str, help="Path to the YAML config file.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
+parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
 
 def main(args: argparse.Namespace) -> None:
+    if args.threads:
+        torch.set_num_threads(args.threads)
+        torch.set_num_interop_threads(args.threads)
+
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
