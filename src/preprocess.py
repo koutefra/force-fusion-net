@@ -6,11 +6,17 @@ from data.scene_dataset import SceneDataset
 from data.loaders.trajnet_loader import TrajnetLoader
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader
 from data.fdm_calculator import FiniteDifferenceCalculator
+import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=True, type=str, help="Path to the YAML config file.")
+parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
 
 def main(args: argparse.Namespace) -> None:
+    if args.threads:
+        torch.set_num_threads(args.threads)
+        torch.set_num_interop_threads(args.threads)
+
     with open(args.config, "r") as file:
         config = yaml.safe_load(file)
 

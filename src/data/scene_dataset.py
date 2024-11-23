@@ -4,6 +4,7 @@ from entities.features import  SceneFeatures, Features
 from collections import defaultdict
 import json
 import pickle
+import os
 from tqdm import tqdm
 
 class SceneDataset:
@@ -60,6 +61,10 @@ class SceneDataset:
         filepath: str,
         writing_mode: str = "w"
     ) -> None:
+        directory = os.path.dirname(filepath)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory)
+
         with open(f"{filepath}.ndjson", writing_mode) as f:
             for loader_name, loader_scenes in features.items():
                 for scene_id, scene_features in loader_scenes.items():
@@ -96,6 +101,10 @@ class SceneDataset:
         features: dict[str, dict[str, SceneFeatures]], 
         filepath: str
     ) -> None:
+        directory = os.path.dirname(filepath)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory)
+
         with open(f"{filepath}.pkl", "wb") as f:
             pickle.dump(features, f)
 

@@ -71,7 +71,6 @@ class Scene:
         first_frame_number = list(self.frames.keys())[0]
         first_frame_persons = self.frames[first_frame_number]
         delta_time = frame_step / self.fps
-        print(delta_time)
         recomputed_frames = {first_frame_number: first_frame_persons}
 
         step = 0
