@@ -64,7 +64,7 @@ class Scene:
         self, 
         predict_acc_func: Callable[[list["Features"]], list[Acceleration]],
         total_steps: int,
-        goal_radius: float = 100,
+        goal_radius: float = 50,
         person_ids: Optional[list[int]] = None
     ) -> "Scene":
         from entities.features import Features
@@ -77,6 +77,7 @@ class Scene:
         step = 0
         frame_number = frame_numbers[0]
         next_frame_number = frame_number + frame_step
+        simulation_person_out_ids = set()
         with tqdm(total=total_steps, initial=step, desc="Simulation processing steps", unit="step") as pbar:
             while len(recomputed_frames) > 0 and total_steps > step:
                 recomputed_frame_no_acc = recomputed_frames[frame_number]
@@ -107,7 +108,13 @@ class Scene:
                 recomputed_frames[frame_number] = recomputed_frame
 
                 next_recomputed_frame_no_acc = {
-                    **(self.frames[next_frame_number] if next_frame_number in self.frames else {}),  # add newcomers
+                    **(
+                        {
+                            pid: person 
+                            for pid, person in self.frames[next_frame_number].items() 
+                            if pid not in simulation_person_out_ids
+                        } if next_frame_number in self.frames else {}
+                        ),
                     **{
                         person_id: Person(
                             position=person.position + person.velocity * delta_time + 0.5 * person.acceleration * delta_time**2,
@@ -139,6 +146,7 @@ class Scene:
                     and not person.position.is_within(person.goal - goal_radius, person.goal + goal_radius)
                 }
                 recomputed_frames[next_frame_number] = next_recomputed_frame_no_acc
+                simulation_person_out_ids.update(recomputed_frame.keys() - next_recomputed_frame_no_acc.keys()) 
 
                 step += 1
                 frame_number = next_frame_number

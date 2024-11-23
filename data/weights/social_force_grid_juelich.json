@@ -1,6 +1,8 @@
 {
-    "A": 5.0,
-    "B": 0.2,
-    "tau": 0.2,
+    "A_interaction": 1.2,
+    "B_interaction": 0.5,
+    "A_obstacle": 1.2,
+    "B_obstacle": 1.0,
+    "tau": 0.5,
     "desired_speed": 1.0
 }
