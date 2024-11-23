@@ -64,10 +64,7 @@ def main(args: argparse.Namespace) -> None:
             IndividualFeatures.dim(), 
             InteractionFeatures.dim(), 
             ObstacleFeatures.dim(),
-            config['interaction_out_dim'], 
-            config['obstacle_out_dim'], 
-            config['hidden_sizes'], 
-            output_dim=2
+            config['hidden_dim']
         )
         predictor = NeuralNetPredictor(
             model=model,

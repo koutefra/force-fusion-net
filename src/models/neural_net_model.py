@@ -9,28 +9,29 @@ class NeuralNetModel(TrainableModule):
         individual_fts_dim: int, 
         interaction_fts_dim: int, 
         obstacle_fts_dim: int, 
-        interaction_out_dim: int,
-        obstacle_out_dim: int,
-        hidden_dims: list[int], 
-        output_dim: int
+        hidden_dim: int 
     ):
         super(NeuralNetModel, self).__init__()
         self.individual_fts_dim = individual_fts_dim
         self.interaction_fts_dim = interaction_fts_dim
         self.obstacle_fts_dim = obstacle_fts_dim
-        self.interaction_out_dim = interaction_out_dim
-        self.obstacle_out_dim = obstacle_out_dim
-        self.hidden_dims = hidden_dims
-        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = 2
 
-        self.fc_interaction = nn.Linear(interaction_fts_dim, interaction_out_dim)
-        self.fc_obstacle = nn.Linear(obstacle_fts_dim, obstacle_out_dim)
-        self.fcs_main = nn.ModuleList()
-        layer_input_dim = individual_fts_dim + interaction_out_dim + obstacle_out_dim
-        for h_dim in hidden_dims:
-            self.fcs_main.append(nn.Linear(layer_input_dim, h_dim))
-            layer_input_size = h_dim
-        self.fc_output = nn.Linear(layer_input_size, output_dim)
+        #  individual features
+        self.b_norm_individual = nn.BatchNorm1d(individual_fts_dim)
+        self.fc_individual_1 = nn.Linear(individual_fts_dim, hidden_dim)
+        self.fc_individual_2 = nn.Linear(hidden_dim, self.output_dim)
+
+        #  interaction features
+        self.b_norm_interaction = nn.BatchNorm1d(interaction_fts_dim)
+        self.fc_interaction_1 = nn.Linear(interaction_fts_dim, hidden_dim)
+        self.fc_interaction_2 = nn.Linear(hidden_dim, self.output_dim)
+
+        #  obstacle features
+        self.b_norm_obstacle = nn.BatchNorm1d(obstacle_fts_dim)
+        self.fc_obstacle_1 = nn.Linear(obstacle_fts_dim, hidden_dim)
+        self.fc_obstacle_2 = nn.Linear(hidden_dim, self.output_dim)
 
     def _process_feature(self, x: torch.Tensor, layer: nn.Linear, out_dim: int) -> torch.Tensor:
         if x.numel() > 0:
@@ -48,14 +49,37 @@ class NeuralNetModel(TrainableModule):
         # x_individual.shape: [batch_size, individual_fts_dim] 
         # x_interaction.shape: [batch_size, l, interaction_fts_dim]
         # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
-        x_interaction = self._process_feature(x_interaction, self.fc_interaction, self.fc_interaction.out_features)
-        x_obstacle = self._process_feature(x_obstacle, self.fc_obstacle, self.fc_obstacle.out_features)
-        x_combined = torch.concat([x_individual, x_interaction, x_obstacle], dim=1)
-        # x_combined is of shape [batch_size, individual_fts_dim + interaction_out_dim + obstacle_out_dim]
-        x = x_combined
-        for layer in self.fcs_main:
-            x = F.relu(layer(x))
-        return self.fc_output(x)
+
+        x_individual = self.b_norm_individual(x_individual)
+        x_individual = self.fc_individual_1(x_individual)
+        x_individual = F.relu(x_individual)
+        x_individual = self.fc_individual_2(x_individual)
+
+        if x_interaction.numel() > 0:
+            orig_shape = x_interaction.shape
+            x_interaction = x_interaction.view(-1, x_interaction.size(-1))
+
+            x_interaction = self.b_norm_interaction(x_interaction)
+            x_interaction = self.fc_interaction_1(x_interaction)
+            x_interaction = F.relu(x_interaction)
+            x_interaction = self.fc_interaction_2(x_interaction)
+            x_interaction = x_interaction.view(*orig_shape[:-1], -1).sum(dim=1)
+        else:
+            x_interaction = torch.zeros_like(x_individual)
+
+        if x_obstacle.numel() > 0:
+            orig_shape = x_obstacle.shape
+            x_obstacle = x_obstacle.view(-1, x_obstacle.size(-1))
+
+            x_obstacle = self.b_norm_obstacle(x_obstacle)
+            x_obstacle = self.fc_obstacle_1(x_obstacle)
+            x_obstacle = F.relu(x_obstacle)
+            x_obstacle = self.fc_obstacle_2(x_obstacle)
+            x_obstacle = x_obstacle.view(*orig_shape[:-1], -1).sum(dim=1)
+        else:
+            x_obstacle = torch.zeros_like(x_individual)
+
+        return x_individual + x_interaction + x_obstacle
 
     def _get_next_position(self, y_pred, ys):
         cur_positions = ys[0]
@@ -78,39 +102,23 @@ class NeuralNetModel(TrainableModule):
 
     @staticmethod
     def from_weight_file(path: str, device: str | torch.device = "cpu") -> "NeuralNetModel":
-        state_dict = torch.load(path, map_location="cpu")
+        state_dict = torch.load(path, map_location=device)
 
-        # Infer the dimensions
-        interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
-        interaction_out_dim = state_dict['fc_interaction.weight'].size(0)
+        # Infer the dimensions from the loaded state dict
+        individual_fts_dim = state_dict['fc_individual_1.weight'].size(1)
+        interaction_fts_dim = state_dict['fc_interaction_1.weight'].size(1)
+        obstacle_fts_dim = state_dict['fc_obstacle_1.weight'].size(1)
+        hidden_dim = state_dict['fc_individual_1.weight'].size(0)
 
-        obstacle_fts_dim = state_dict['fc_obstacle.weight'].size(1)
-        obstacle_out_dim = state_dict['fc_obstacle.weight'].size(0)
+        # Assume the output_dim is consistent across the last layer of all feature types
+        output_dim = state_dict['fc_individual_2.weight'].size(0)
 
-        individual_fts_dim = (
-            state_dict['fcs_main.0.weight'].size(1) 
-            - interaction_out_dim 
-            - obstacle_out_dim
-        )
-
-        hidden_dims = []
-        for key in state_dict:
-            if key.startswith("fcs_main.") and key.endswith(".weight"):
-                layer_index = int(key.split(".")[1])
-                if layer_index >= len(hidden_dims):
-                    hidden_dims.append(state_dict[key].size(0))
-
-        output_dim = state_dict['fc_output.weight'].size(0)
-
-        # Create the model
+        # Create the model with inferred dimensions
         model = NeuralNetModel(
             individual_fts_dim=individual_fts_dim,
             interaction_fts_dim=interaction_fts_dim,
             obstacle_fts_dim=obstacle_fts_dim,
-            interaction_out_dim=interaction_out_dim,
-            obstacle_out_dim=obstacle_out_dim,
-            hidden_dims=hidden_dims,
-            output_dim=output_dim
+            hidden_dim=hidden_dim
         )
 
         # Load weights

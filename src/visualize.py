@@ -19,7 +19,7 @@ parser.add_argument("--dataset_name", required=True, type=str, help="The dataset
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
 parser.add_argument("--predictor_type",  type=str, help="The trained model type.")
 parser.add_argument("--scenes_to_show", default=[1], nargs='*', type=int, help="IDs of scenes to visualize. If None, random scenes are selected.")
-parser.add_argument("--sampling_step", default=5, type=int, help="Sampling step.")
+parser.add_argument("--sampling_step", default=1, type=int, help="Sampling step.")
 parser.add_argument("--fdm_win_size", default=20, type=int, help="Finitie difference method window size.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 
@@ -44,8 +44,7 @@ def main(args: argparse.Namespace) -> None:
         elif args.predictor_type == 'social_force':
             with open(args.predictor_path, "r") as file:
                 param_grid = json.load(file)
-            delta_time = 0.4
-            model = SocialForceModel(delta_time=delta_time, **param_grid)
+            model = SocialForceModel(param_valus_to_cm=True)
             predictor = SocialForcePredictor(model)
         else:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
@@ -55,12 +54,19 @@ def main(args: argparse.Namespace) -> None:
     scene = scene_dataset.scenes['juelich_bneck'][scene_id]
     scene_transformed = scene.simulate(
         predict_acc_func=predictor.predict,
-        frame_step=args.sampling_step,
-        total_steps=100
+        total_steps=400
     )
-
-    visualizer.visualize(scene_transformed, time_scale=1.0/args.sampling_step)
-    # visualizer.visualize(scene, time_scale=1/args.sampling_step)
+    # from collections import OrderedDict, defaultdict
+    # from entities.scene import Scene
+    # reduced_frames = OrderedDict(list(scene.frames.items())[:400])
+    # scene = Scene(
+    #     id=scene.id,
+    #     obstacles=scene.obstacles,
+    #     frames=reduced_frames,
+    #     fps=scene.fps,
+    #     tag=scene.tag
+    # )
+    visualizer.visualize(scene_transformed, time_scale=1.0)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))
