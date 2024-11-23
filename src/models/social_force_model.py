@@ -12,7 +12,6 @@ class SocialForceModel:
         desired_speed: float = 0.8,  # m/s
     ):
         distance_scale = 100 if param_valus_to_cm else 1
-
         self.A = A * distance_scale
         self.B = B * distance_scale
         self.tau = tau
@@ -60,6 +59,5 @@ class SocialForceModel:
             interaction_force = self._interaction_force(f.interaction_features)
             obstacle_force = self._obstacle_force(f.obstacle_features)
             total_force = desired_force + interaction_force + obstacle_force
-            print(desired_force.magnitude(), interaction_force.magnitude(), obstacle_force.magnitude())
             preds_acc.append(total_force)
         return preds_acc

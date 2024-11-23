@@ -1,7 +1,6 @@
 {
-    "A": 1.0,
+    "A": 5.0,
     "B": 0.2,
-    "tau": 0.5,
-    "radius": 1.0,
-    "desired_speed": 1.2
+    "tau": 0.2,
+    "desired_speed": 1.0
 }

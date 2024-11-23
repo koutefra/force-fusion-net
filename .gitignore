@@ -5,6 +5,8 @@ __pycache__/
 *.pyd
 *.pkl
 *.DS_Store
-/logs
+/logs/
 *.gif
 *.pth
+/animations
+/data/

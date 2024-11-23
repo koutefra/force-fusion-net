@@ -1,14 +1,15 @@
 import argparse
 import numpy as np
 from data.scene_dataset import SceneDataset
-from data.loaders.trajnet_loader import TrajnetLoader
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
+from data.fdm_calculator import FiniteDifferenceCalculator
 from visualization.visualization import Visualizer
 from models.neural_net_predictor import NeuralNetPredictor
 from models.neural_net_model import NeuralNetModel
 from models.social_force_model import SocialForceModel
 from models.social_force_predictor import SocialForcePredictor
-from data.fdm_calculator import FiniteDifferenceCalculator
+from collections import OrderedDict, defaultdict
+from entities.scene import Scene
 import random
 import json
 
@@ -17,10 +18,11 @@ parser.add_argument("--dataset_path", required=True, type=str, help="The dataset
 parser.add_argument("--dataset_type", required=True, type=str, help="The dataset type.")
 parser.add_argument("--dataset_name", required=True, type=str, help="The dataset name.")
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
-parser.add_argument("--predictor_type",  type=str, help="The trained model type.")
-parser.add_argument("--scenes_to_show", default=[1], nargs='*', type=int, help="IDs of scenes to visualize. If None, random scenes are selected.")
-parser.add_argument("--sampling_step", default=1, type=int, help="Sampling step.")
+parser.add_argument("--predictor_type",  type=str, default="gt", help="The trained model type.")
 parser.add_argument("--fdm_win_size", default=20, type=int, help="Finitie difference method window size.")
+parser.add_argument("--time_scale", default=1.0, type=float, help="Time scale of the animations.")
+parser.add_argument("--sampling_step", default=1, type=int, help="Dataset sampling step.")
+parser.add_argument("--animation_steps", default=300, type=int, help="How many steps should be simulated.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 
 def main(args: argparse.Namespace) -> None:
@@ -44,29 +46,33 @@ def main(args: argparse.Namespace) -> None:
         elif args.predictor_type == 'social_force':
             with open(args.predictor_path, "r") as file:
                 param_grid = json.load(file)
-            model = SocialForceModel(param_valus_to_cm=True)
+            model = SocialForceModel(param_valus_to_cm=True, **param_grid)
             predictor = SocialForcePredictor(model)
+        elif args.predictor_type == 'gt':
+            pass
         else:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
         
     visualizer = Visualizer()
     scene_id = "b090"
     scene = scene_dataset.scenes['juelich_bneck'][scene_id]
-    scene_transformed = scene.simulate(
-        predict_acc_func=predictor.predict,
-        total_steps=400
-    )
-    # from collections import OrderedDict, defaultdict
-    # from entities.scene import Scene
-    # reduced_frames = OrderedDict(list(scene.frames.items())[:400])
-    # scene = Scene(
-    #     id=scene.id,
-    #     obstacles=scene.obstacles,
-    #     frames=reduced_frames,
-    #     fps=scene.fps,
-    #     tag=scene.tag
-    # )
-    visualizer.visualize(scene_transformed, time_scale=1.0)
+
+    if predictor:
+        scene = scene.simulate(
+            predict_acc_func=predictor.predict,
+            total_steps=args.animation_steps
+        )
+    else:
+        reduced_frames = OrderedDict(list(scene.frames.items())[:args.animation_steps])
+        scene = Scene(
+            id=scene.id,
+            obstacles=scene.obstacles,
+            frames=reduced_frames,
+            fps=scene.fps,
+            tag=scene.tag
+        )
+
+    visualizer.visualize(scene, time_scale=args.time_scale, desc=args.predictor_type)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))
