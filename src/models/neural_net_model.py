@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from entities.vector2d import kinematic_equation
 from models.trainable_module import TrainableModule
 
 class NeuralNetModel(TrainableModule):
@@ -20,18 +21,17 @@ class NeuralNetModel(TrainableModule):
 
         #  individual features
         self.b_norm_individual = nn.BatchNorm1d(individual_fts_dim)
-        self.fc_individual_1 = nn.Linear(individual_fts_dim, hidden_dim)
-        self.fc_individual_2 = nn.Linear(hidden_dim, self.output_dim)
+        self.fc_individual = nn.Linear(individual_fts_dim, hidden_dim)
 
         #  interaction features
         self.b_norm_interaction = nn.BatchNorm1d(interaction_fts_dim)
-        self.fc_interaction_1 = nn.Linear(interaction_fts_dim, hidden_dim)
-        self.fc_interaction_2 = nn.Linear(hidden_dim, self.output_dim)
+        self.fc_interaction = nn.Linear(interaction_fts_dim, hidden_dim)
 
         #  obstacle features
         self.b_norm_obstacle = nn.BatchNorm1d(obstacle_fts_dim)
-        self.fc_obstacle_1 = nn.Linear(obstacle_fts_dim, hidden_dim)
-        self.fc_obstacle_2 = nn.Linear(hidden_dim, self.output_dim)
+        self.fc_obstacle = nn.Linear(obstacle_fts_dim, hidden_dim)
+
+        self.fc_combined = nn.Linear(3 * hidden_dim, self.output_dim)
 
     def _process_feature(self, x: torch.Tensor, layer: nn.Linear, out_dim: int) -> torch.Tensor:
         if x.numel() > 0:
@@ -51,18 +51,15 @@ class NeuralNetModel(TrainableModule):
         # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
 
         x_individual = self.b_norm_individual(x_individual)
-        x_individual = self.fc_individual_1(x_individual)
+        x_individual = self.fc_individual(x_individual)
         x_individual = F.relu(x_individual)
-        x_individual = self.fc_individual_2(x_individual)
 
         if x_interaction.numel() > 0:
             orig_shape = x_interaction.shape
             x_interaction = x_interaction.view(-1, x_interaction.size(-1))
-
             x_interaction = self.b_norm_interaction(x_interaction)
-            x_interaction = self.fc_interaction_1(x_interaction)
+            x_interaction = self.fc_interaction(x_interaction)
             x_interaction = F.relu(x_interaction)
-            x_interaction = self.fc_interaction_2(x_interaction)
             x_interaction = x_interaction.view(*orig_shape[:-1], -1).sum(dim=1)
         else:
             x_interaction = torch.zeros_like(x_individual)
@@ -70,32 +67,35 @@ class NeuralNetModel(TrainableModule):
         if x_obstacle.numel() > 0:
             orig_shape = x_obstacle.shape
             x_obstacle = x_obstacle.view(-1, x_obstacle.size(-1))
-
             x_obstacle = self.b_norm_obstacle(x_obstacle)
-            x_obstacle = self.fc_obstacle_1(x_obstacle)
+            x_obstacle = self.fc_obstacle(x_obstacle)
             x_obstacle = F.relu(x_obstacle)
-            x_obstacle = self.fc_obstacle_2(x_obstacle)
             x_obstacle = x_obstacle.view(*orig_shape[:-1], -1).sum(dim=1)
         else:
             x_obstacle = torch.zeros_like(x_individual)
 
-        return x_individual + x_interaction + x_obstacle
+        combined_features = torch.cat([x_individual, x_interaction, x_obstacle], dim=-1)
+        output = self.fc_combined(combined_features)
 
-    def _get_next_position(self, y_pred, ys):
-        cur_positions = ys[0]
-        cur_velocities = ys[2]
-        delta_times = ys[3]
-        delta_times = delta_times.unsqueeze(-1).repeat(1, 2)
-        cur_accelerations = y_pred
-        return cur_positions + cur_velocities * delta_times + 0.5 * cur_accelerations * delta_times**2
+        return output
 
     def compute_loss(self, y_pred, ys, *xs):
-        next_pos_predicted = self._get_next_position(y_pred, ys)
+        next_pos_predicted = kinematic_equation(
+            cur_positions=ys[0],
+            cur_velocities=ys[2],
+            delta_times=ys[3].unsqueeze(-1),
+            cur_accelerations=y_pred
+        )
         next_positions = ys[1]
         return self.loss(next_pos_predicted, next_positions)
 
     def compute_metrics(self, y_pred, ys, *xs, training):
-        next_pos_predicted = self._get_next_position(y_pred, ys)
+        next_pos_predicted = kinematic_equation(
+            cur_positions=ys[0],
+            cur_velocities=ys[2],
+            delta_times=ys[3].unsqueeze(-1),
+            cur_accelerations=y_pred
+        )
         next_positions = ys[1]
         self.metrics.update(next_pos_predicted, next_positions)
         return self.metrics.compute()
@@ -105,13 +105,10 @@ class NeuralNetModel(TrainableModule):
         state_dict = torch.load(path, map_location=device)
 
         # Infer the dimensions from the loaded state dict
-        individual_fts_dim = state_dict['fc_individual_1.weight'].size(1)
-        interaction_fts_dim = state_dict['fc_interaction_1.weight'].size(1)
-        obstacle_fts_dim = state_dict['fc_obstacle_1.weight'].size(1)
-        hidden_dim = state_dict['fc_individual_1.weight'].size(0)
-
-        # Assume the output_dim is consistent across the last layer of all feature types
-        output_dim = state_dict['fc_individual_2.weight'].size(0)
+        individual_fts_dim = state_dict['fc_individual.weight'].size(1)
+        interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
+        obstacle_fts_dim = state_dict['fc_obstacle.weight'].size(1)
+        hidden_dim = state_dict['fc_individual.weight'].size(0)
 
         # Create the model with inferred dimensions
         model = NeuralNetModel(

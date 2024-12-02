@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Union, TypeVar
+from typing import Union, TypeVar, Any
 import torch
 
 T = TypeVar('T', bound='Point2D')
@@ -125,3 +125,11 @@ class Acceleration(Point2D):
     @staticmethod
     def from_velocities(velocities: list[Velocity], delta_times: list[float]) -> "Acceleration":
         return Point2D.calculate_average_change(velocities, delta_times, Acceleration)
+
+def kinematic_equation(cur_positions: Any, cur_velocities: Any, cur_accelerations: Any, delta_times: Any) -> Any:
+    next_positions = (
+        cur_positions
+        + cur_velocities * delta_times
+        + 0.5 * cur_accelerations * delta_times**2
+    )
+    return next_positions

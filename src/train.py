@@ -70,7 +70,7 @@ def main(args: argparse.Namespace) -> None:
             model=model,
             batch_size=config['batch_size'],
             logdir_path=args.logdir,
-            device="cpu"
+            device=args.device
         )
 
         # split to train/val
