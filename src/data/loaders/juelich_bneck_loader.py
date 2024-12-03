@@ -1,7 +1,9 @@
 from data.loaders.base_loader import BaseLoader
 from entities.vector2d import Point2D
 from collections import defaultdict, OrderedDict
-from entities.scene import Scene, Scenes, Trajectories, Person, Obstacle
+from entities.scene import Scene, Scenes, Person, Obstacle
+from entities.frame import Frames
+from entities.trajectory import Trajectories, Trajectory
 from data.fdm_calculator import FiniteDifferenceCalculator
 from typing import Optional
 from tqdm import tqdm
@@ -9,17 +11,8 @@ from tqdm import tqdm
 class JuelichBneckLoader(BaseLoader):
     # fps should be 12.5, according to this: https://arxiv.org/pdf/physics/0702004
     fps = 12.5
+    goal_position = Point2D(x=4.9, y=0.0)
 
-    def __init__(
-        self, 
-        paths_and_names: list[tuple[str, str]], 
-        sampling_step: int,
-        fdm_calculator: Optional[FiniteDifferenceCalculator],
-    ):
-        self.paths_and_names = paths_and_names
-        self.sampling_step = sampling_step
-        self.fdm_calculator = fdm_calculator
-    
     BOUNDARIES = {
         "b090": "POLYGON ((-4 -4, -4 5, 4 5, 4 -4), (-3.5 -3.5, -3.5 0, -0.45 0, -0.45 4, -0.5 4, -0.5 0.05, -3.55 0.05, -3.55 -3.5), (3.5 -3.5, 3.5 0, 0.45 0, 0.45 4, 0.5 4, 0.5 0.05, 3.55 0.05, 3.55 -3.5))",
         "b100": "POLYGON ((-4 -4, -4 5, 4 5, 4 -4), (-3.5 -3.5, -3.5 0, -0.5 0, -0.5 4, -0.55 4, -0.55 0.05, -3.55 0.05, -3.55 -3.5), (3.5 -3.5, 3.5 0, 0.5 0, 0.5 4, 0.55 4, 0.55 0.05, 3.55 0.05, 3.55 -3.5))",
@@ -36,58 +29,70 @@ class JuelichBneckLoader(BaseLoader):
         "l4": "POLYGON ((-4 -4, -4 5, 4 5, 4 -4), (-3.5 -3.5, -3.5 0, -0.6 0, -0.6 4, -0.65 4, -0.65 0.05, -3.55 0.05, -3.55 -3.5), (3.5 -3.5, 3.5 0, 0.6 0, 0.6 4, 0.65 4, 0.65 0.05, 3.55 0.05, 3.55 -3.5))"
     }
 
+    def __init__(
+        self, 
+        paths_and_names: list[tuple[str, str]], 
+        sampling_step: int,
+        compute_velocities: bool = True,
+        compute_accelerations: bool = False,
+        fdm_calculator: Optional[FiniteDifferenceCalculator] = None,
+    ):
+        self.paths_and_names = paths_and_names
+        self.sampling_step = sampling_step
+        self.compute_velocities = compute_velocities
+        self.compute_accelerations = compute_accelerations
+        self.fdm_calculator = fdm_calculator
+    
     def load(self, print_progress: bool = True) -> Scenes:
         scenes = {}
         for path, name in tqdm(
             self.paths_and_names, 
-            desc="Loading scenes for juelich_bneck dataset...", 
+            desc=f"Loading scenes for juelich_bneck {name} dataset...", 
             disable=not print_progress):
-            scene = self._load_scene(path, name, self.sampling_step, self.fps, fdm_calculator=self.fdm_calculator)
-            scenes[name] = scene
-        return scenes
+            scene = self._load_scene(path, name)
+            scenes[scene.id] = scene
+        return Scenes(scenes)
 
-    @staticmethod
     def _load_scene(
+        self,
         path: str, 
-        dataset_name: str, 
-        sampling_step: int,
-        fps: float,
-        goal_position: Point2D = Point2D(x=490, y=0),
-        fdm_calculator: Optional[FiniteDifferenceCalculator] = None
+        scene_name: str, 
     ) -> Scene:
         parsed_file = JuelichBneckLoader.parse_file(path)
 
-        trajectories: Trajectories = defaultdict(lambda: OrderedDict())
+        trajectories_raw = defaultdict(lambda: OrderedDict())
         for person_id, frame_number, x, y in parsed_file:
             trajectories[person_id][frame_number] = Person(
-                position=Point2D(x=x, y=y),
-                goal=goal_position
+                position=Point2D(x=x*0.01, y=y*0.01),  # conversion from cm to meters
+                goal=self.goal_position
             )
+        trajectories = Trajectories({k: Trajectory(person_id=k, records=v) for k, v in trajectories_raw.items()})
 
-        if fdm_calculator is not None:
-            trajectories = fdm_calculator.compute_velocities(trajectories, fps)
-            trajectories = fdm_calculator.compute_accelerations(trajectories, fps)
+        if self.compute_velocities:
+            trajectories = self.fdm_calculator.compute_velocities(trajectories, self.fps)
+
+        if self.compute_accelerations:
+            trajectories = self.fdm_calculator.compute_accelerations(trajectories, self.fps)
             
-        # Apply sampling step using functional style
+        # Apply sampling step
         trajectories = {
             person_id: OrderedDict(filter(
-                lambda item: item[0] % sampling_step == 0, frames.items()
+                lambda item: item[0] % self.sampling_step == 0, trajectory.records.items()
             ))
-            for person_id, frames in trajectories.items()
+            for person_id, trajectory in trajectories.items()
         }
 
         obstacles = [
-            # time 100 for conversion from meters to centimeters
-            Obstacle(start_point=obstacle[i] * 100, end_point=obstacle[i + 1] * 100) 
-            for obstacle in JuelichBneckLoader.parse_polygon_string(JuelichBneckLoader.BOUNDARIES[dataset_name])
+            Obstacle(start_point=obstacle[i], end_point=obstacle[i + 1]) 
+            for obstacle in JuelichBneckLoader.parse_polygon_string(JuelichBneckLoader.BOUNDARIES[scene_name])
             for i in range(len(obstacle) - 1)
         ]
 
         return Scene(
-            id=dataset_name,
+            id=f"juelich_{scene_name}",
             obstacles=obstacles,
-            frames=Scene.trajectories_to_frames(trajectories),
-            fps=fps
+            frames=Frames.from_trajectories(trajectories),
+            fps=self.fps
         )
 
     @staticmethod

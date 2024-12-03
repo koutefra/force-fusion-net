@@ -8,18 +8,19 @@ import os
 from tqdm import tqdm
 
 class SceneDataset:
-    scenes = dict[str, Scenes]
+    scenes = Scenes()
 
-    def __init__(self, loaders: dict[str, BaseLoader], print_progress: bool = True):
+    def __init__(self, loaders: list[BaseLoader], print_progress: bool = True):
         self.loaders = loaders
         self.scenes = self._load(loaders, print_progress)
         self.print_progress = print_progress
 
     @staticmethod
-    def _load(loaders: dict[str, BaseLoader], print_progress: bool = True):
-        scenes = {}
-        for loader_name, loader in loaders.items():
-            scenes[loader_name] = loader.load(print_progress)
+    def _load(loaders: list[BaseLoader], print_progress: bool = True):
+        scenes = Scenes()
+        for loader in loaders:
+            loaded_scenes = loader.load(print_progress)
+            scenes = Scenes({**scenes, **loaded_scenes})
         return scenes
 
     def _process_scenes(

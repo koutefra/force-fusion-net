@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 from typing import Union, TypeVar, Any
 import torch
+import numpy as np
 
 T = TypeVar('T', bound='Point2D')
 
@@ -86,8 +87,11 @@ class Point2D:
     def __len__(self) -> int:
         return 2
 
-    def to_tensor(self, device: torch.device | str, dtype: torch.dtype = torch.float32, precision: int = 6) -> torch.Tensor:
+    def to_tensor(self, device: torch.device | str, dtype: torch.dtype = torch.float32) -> torch.Tensor:
         return torch.tensor([self.x, self.y], dtype=dtype, device=device)
+
+    def to_numpy(self, dtype: np.dtype = np.float32) -> np.ndarray:
+        return np.array([self.x, self.y], dtype=dtype)
 
     def to_json(self) -> dict:
         return {"x": self.x, "y": self.y}
@@ -133,3 +137,16 @@ def kinematic_equation(cur_positions: Any, cur_velocities: Any, cur_acceleration
         + 0.5 * cur_accelerations * delta_times**2
     )
     return next_positions
+
+def closest_point_on_line(point: Point2D, line_start: Point2D, line_end: Point2D, eps: float = 1e-6) -> Point2D:
+    line_vec = line_end - line_start
+    point_vec = point - line_start
+    line_len = line_vec.magnitude()
+    line_unit_vec = line_vec * (1 / (line_len + eps))
+    projection_length = point_vec.dot(line_unit_vec)
+
+    # Clamp projection length to line segment bounds [0, line_len]
+    projection_length = max(0, min(line_len, projection_length))
+    closest_point = line_start + line_unit_vec * projection_length
+    
+    return closest_point

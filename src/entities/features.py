@@ -430,16 +430,3 @@ class SceneFeatures:
     def from_ndjson(json_data: str) -> "SceneFeatures":
         data = json.loads(json_data)
         return SceneFeatures.from_dict(data)
-
-def closest_point_on_line(point: Point2D, line_start: Point2D, line_end: Point2D, eps: float = 1e-6) -> Point2D:
-    line_vec = line_end - line_start
-    point_vec = point - line_start
-    line_len = line_vec.magnitude()
-    line_unit_vec = line_vec * (1 / (line_len + eps))
-    projection_length = point_vec.dot(line_unit_vec)
-
-    # Clamp projection length to line segment bounds [0, line_len]
-    projection_length = max(0, min(line_len, projection_length))
-    closest_point = line_start + line_unit_vec * projection_length
-    
-    return closest_point

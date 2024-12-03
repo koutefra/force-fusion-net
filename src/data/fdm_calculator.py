@@ -1,6 +1,7 @@
 from entities.vector2d import Velocity, Acceleration
 from collections import OrderedDict, defaultdict
-from entities.scene import Trajectories, Person
+from entities.trajectory import Trajectories, Trajectory
+from entities.person import Person
 
 class FiniteDifferenceCalculator:
     def __init__(self, win_size: int, fdm_type: str = "backward"):
@@ -26,7 +27,7 @@ class FiniteDifferenceCalculator:
         for person_id, person_trajectory in trajectories.items():
             computed_properties = self._compute_fdm_property(person_trajectory, in_prop, out_prop, fps)
             for frame_number, computed_value in computed_properties.items():
-                ori_person = person_trajectory[frame_number]
+                ori_person = person_trajectory.records[frame_number]
                 new_person = Person(
                     position=ori_person.position,
                     goal=ori_person.goal,
@@ -38,22 +39,22 @@ class FiniteDifferenceCalculator:
 
     def _compute_fdm_property(
         self,
-        person_trajectory: OrderedDict[int, Person],
+        person_trajectory: Trajectory,
         in_prop: str,
         out_prop: str,
         fps: float
     ) -> OrderedDict[int, Velocity | Acceleration]:
         computed_results = OrderedDict()
-        frame_numbers = list(person_trajectory.keys())
+        frame_numbers = list(person_trajectory.records.keys())
         for frame_id, frame_number in enumerate(frame_numbers):
             window_frame_ids = list(range(max(0, frame_id - self.win_size + 1), frame_id + 1))
             
             window = [
-                getattr(person_trajectory[frame_numbers[fid]], in_prop)
+                getattr(person_trajectory.records[frame_numbers[fid]], in_prop)
                 for fid in window_frame_ids
-                if frame_numbers[fid] in person_trajectory 
+                if frame_numbers[fid] in person_trajectory.records
                 and
-                getattr(person_trajectory[frame_numbers[fid]], in_prop) is not None
+                getattr(person_trajectory.records[frame_numbers[fid]], in_prop) is not None
             ]
 
             if len(window) == self.win_size:
