@@ -1,19 +1,21 @@
 import torch
 import torchmetrics
 from models.base_predictor import BasePredictor
-from entities.vector2d import Acceleration
+from entities.vector2d import Acceleration, Point2D
+from entities.scene import Scenes, Scene
+from entities.frame import Frame, Frames
 from models.neural_net_model import NeuralNetModel
-from entities.features import Features
 from data.torch_dataset import TorchSceneDataset
 from typing import Optional
+from entities.frame import Frame
 
 class NeuralNetPredictor(BasePredictor):
     def __init__(
         self, 
         model: NeuralNetModel,
+        device: str | torch.device,
         batch_size: int = 64, 
         logdir_path: Optional[str] = None,
-        device: str | torch.device = "cpu",
         dtype: torch.dtype = torch.float32
     ):
         super().__init__()
@@ -26,8 +28,8 @@ class NeuralNetPredictor(BasePredictor):
 
     def train(
         self,
-        train_features: list[Features],
-        val_features: list[Features],
+        train_data: Scenes,
+        val_data: Scenes,
         learning_rate: float,
         epochs: int,
         save_path: Optional[str],
@@ -36,10 +38,10 @@ class NeuralNetPredictor(BasePredictor):
         if loss != "mse":
             raise ValueError(f"Loss {loss} not supported")
 
-        train_dataset = TorchSceneDataset(train_features, device=self.device, dtype=self.dtype) 
-        eval_dataset = TorchSceneDataset(val_features, device=self.device, dtype=self.dtype) 
+        train_dataset = TorchSceneDataset(train_data, device=self.device, dtype=self.dtype) 
+        eval_dataset = TorchSceneDataset(val_data, device=self.device, dtype=self.dtype) 
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, collate_fn=train_dataset.prepare_batch)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=train_dataset.prepare_batch)
         eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=self.batch_size, collate_fn=eval_dataset.prepare_batch)
 
         self.model.configure(
@@ -54,10 +56,18 @@ class NeuralNetPredictor(BasePredictor):
         if save_path:
             self.model.save_weights(save_path)
 
-    def predict(self, features: list[Features]) -> list[Acceleration]:
-        features_ts = [f.to_labeled_features() for f in features]
-        dataset = TorchSceneDataset(features_ts, device=self.device, dtype=self.dtype) 
+    def predict(self, frame: Frame) -> dict[int, Acceleration]:
+        mock_scene = Scene(
+            id='mock', 
+            frames=Frames({0: frame}), 
+            bounding_box=(Point2D.zero, Point2D.zero),
+            fps=float('nan')
+        )
+        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), device=self.device, dtype=self.dtype) 
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, collate_fn=dataset.prepare_batch)
         preds_acc = self.model.predict(loader, as_numpy=True)
-        preds_acc = [Acceleration(x=pred_acc[0], y=pred_acc[1]) for pred_acc in preds_acc]
+        preds_acc = {
+            person_id: Acceleration(x=pred_acc[0], y=pred_acc[1]) 
+            for pred_acc, person_id in zip(preds_acc, mock_scene.frames.to_trajectories().keys())
+        }
         return preds_acc

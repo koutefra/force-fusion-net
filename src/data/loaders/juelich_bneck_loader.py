@@ -1,9 +1,10 @@
 from data.loaders.base_loader import BaseLoader
 from entities.vector2d import Point2D
 from collections import defaultdict, OrderedDict
-from entities.scene import Scene, Scenes, Person, Obstacle
-from entities.frame import Frames
-from entities.trajectory import Trajectories, Trajectory
+from entities.scene import Scene, Scenes
+from entities.person import Person
+from entities.obstacle import Obstacle
+from entities.frame import Frames, Trajectories, Trajectory
 from data.fdm_calculator import FiniteDifferenceCalculator
 from typing import Optional
 from tqdm import tqdm
@@ -47,7 +48,7 @@ class JuelichBneckLoader(BaseLoader):
         scenes = {}
         for path, name in tqdm(
             self.paths_and_names, 
-            desc=f"Loading scenes for juelich_bneck {name} dataset...", 
+            desc=f"Loading scenes for juelich_bneck dataset...", 
             disable=not print_progress):
             scene = self._load_scene(path, name)
             scenes[scene.id] = scene
@@ -62,7 +63,8 @@ class JuelichBneckLoader(BaseLoader):
 
         trajectories_raw = defaultdict(lambda: OrderedDict())
         for person_id, frame_number, x, y in parsed_file:
-            trajectories[person_id][frame_number] = Person(
+            trajectories_raw[person_id][frame_number] = Person(
+                id=person_id,
                 position=Point2D(x=x*0.01, y=y*0.01),  # conversion from cm to meters
                 goal=self.goal_position
             )

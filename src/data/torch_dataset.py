@@ -1,48 +1,52 @@
 import torch
-from entities.features import LabeledFeatures
-from torch.nn.utils.rnn import pad_sequence
+from entities.scene import Scenes
+from entities.frame import Frames
+from entities.batched_frames import BatchedFrames
 
 class TorchSceneDataset(torch.utils.data.Dataset):
-    def __init__(
-        self, 
-        data: list[LabeledFeatures],
-        device: torch.device = torch.device('cpu'),
-        dtype: torch.dtype = torch.float32
-    ):
-        self.data = data
+    def __init__(self, scenes: Scenes, steps: int, device: torch.device, dtype: torch.dtype):
+        self.scenes = scenes
+        self.steps = steps
         self.device = device
         self.dtype = dtype
+        self._mapping = self._compute_id_scene_mapping(scenes, steps)
+
+    @staticmethod
+    def _compute_id_scene_mapping(scenes: Scenes, steps: int) -> list[int]:
+        mapping = []
+        for scene_id, scene in scenes.items():
+            f_step = scene.frame_step
+            for person_id, trajectory in scene.frames.to_trajectories().items():
+                for frame_number in trajectory.records.keys():
+                    if all((frame_number + i * f_step) in trajectory.records for i in range(steps + 1)):
+                        mapping.append((scene_id, person_id, frame_number))
 
     def __len__(self) -> int:
-        return len(self.data)
+        return len(self._mapping)
 
-    def __getitem__(
-        self, 
-        idx: int
-    ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
-        datapoint = self.data[idx]
-        x, y = datapoint.to_tensor(self.device, self.dtype)
-        return x, y
+    def __getitem__(self, idx: int) -> tuple[tuple[Frames, int], tuple[torch.Tensor, int]]:
+        scene_id, person_id, start_f_number = self._mapping(idx)
+        scene = self.scenes[scene_id]
+        f_step = scene.frame_step
+        last_f_number = start_f_number + (self.steps + 1) * f_step
+        frames = {
+            frame_number: scene.frames[frame_number]
+            for frame_number in range(start_f_number, last_f_number, f_step)
+        }
+        last_position = frames[last_f_number].persons[person_id].position
+        delta_time = 1 / scene.fps
+        return (frames, person_id), (last_position.to_tensor(self.device, self.dtype), delta_time)
 
     def prepare_batch(
         self, 
-        data: list[tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]]
-    ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
-        input_features, labels = zip(*data)
+        data: list[tuple[tuple[Frames, int], tuple[torch.Tensor, int]]]
+    ) -> tuple[BatchedFrames, tuple[torch.Tensor, torch.Tensor]]:
+        inputs, labels = zip(*data)
+        ground_truths, delta_times = zip(*labels)
+        ground_truths_tensor = torch.stack(ground_truths).to(self.device, dtype=self.dtype)
+        delta_times_tensor = torch.stack(delta_times).to(self.device, dtype=self.dtype)
 
-        # input
-        x_individual, x_interaction, x_obstacle = zip(*input_features)
-        x_individual_stack = torch.stack(x_individual).to(self.device)
-        x_interaction_stack = pad_sequence(x_interaction, batch_first=True).to(self.device)
-        x_obstacle_stack = pad_sequence(x_obstacle, batch_first=True).to(self.device)
+        frames_list, person_ids_list = zip(*inputs)
+        batched_frames = BatchedFrames(frames_list, person_ids_list, self.device, self.dtype)
 
-        # label
-        cur_pos, next_pos, cur_vel, delta_times = zip(*labels)
-        cur_pos_stack = torch.stack(cur_pos).to(self.device)
-        next_pos_stack = torch.stack(next_pos).to(self.device)
-        cur_vel_stack = torch.stack(cur_vel).to(self.device)
-        delta_time_stack = torch.stack(delta_times).to(self.device)
-
-        features = (x_individual_stack, x_interaction_stack, x_obstacle_stack)
-        labels = (cur_pos_stack, next_pos_stack, cur_vel_stack, delta_time_stack)
-        return features, labels
+        return batched_frames, (ground_truths_tensor, delta_times_tensor)

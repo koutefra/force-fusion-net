@@ -1,23 +1,30 @@
 from dataclasses import dataclass
-from functools import cached_property
 from entities.vector2d import Point2D, Velocity, Acceleration
-from collections import OrderedDict, defaultdict
 from typing import Optional, Callable
-from tqdm import tqdm
-from entities.frame import Frame, Frames
-from entities.person import Person
-from entities.obstacle import Obstacle
-from entities.trajectory import Trajectory, Trajectories
-from abc import ABC, abstractmethod
+from entities.frame import Frames
 
 @dataclass(frozen=True)
 class Scene:
     id: str
     frames: Frames
-    obstacles: list[Obstacle]
     bounding_box: tuple[Point2D, Point2D]
     fps: float
+    frame_step: int = 1
     tag: Optional[list[int]] = None
+
+    def normalized(
+        self, 
+        pos_scale: Callable[[Point2D], Point2D] = lambda x: x, 
+        vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
+        acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "Scene":
+        return Scene(
+            id=self.id,
+            frames=self.frames.normalized(pos_scale, vel_scale, acc_scale),
+            bounding_box=(pos_scale(self.bounding_box[0], pos_scale(self.bounding_box[1]))),
+            fps=self.fps,
+            frame_step=self.frame_step,
+            tag=self.tag
+        )
 
     # def simulate(
     #     self, 
@@ -101,4 +108,12 @@ class Scene:
     #     )
 
 class Scenes(dict[str, Scene]):
-    pass
+    def normalized(
+        self, 
+        pos_scale: Callable[[Point2D], Point2D] = lambda x: x, 
+        vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
+        acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "Scenes":
+        return {
+            scene_id: scene.normalized(pos_scale, vel_scale, acc_scale)
+            for scene_id, scene in self.items()
+        }

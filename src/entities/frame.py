@@ -1,31 +1,47 @@
 from dataclasses import dataclass
 from entities.person import Person
-from entities.trajectory import Trajectory, Trajectories
-from entities.obstacle import Obstacle
+from entities.obstacle import LineObstacle
 from collections import OrderedDict, defaultdict
-from typing import Optional
+from typing import Callable
+from entities.vector2d import Point2D, Velocity, Acceleration, closest_point_on_line
 
 @dataclass(frozen=True)
 class Frame:
     number: int 
     persons: dict[int, Person]
+    obstacles: dict[int, LineObstacle]
+
+    def normalized(
+        self, 
+        pos_scale: Callable[[Point2D], Point2D] = lambda f: f, 
+        vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
+        acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "Frame":
+        return Frame(
+            number=self.number,
+            persons={
+                person_id: person.normalized(pos_scale, vel_scale, acc_scale)
+                for person_id, person in self.persons.items()
+            },
+            obstacles={
+                obstacle_id: obstacle.normalized(pos_scale, vel_scale, acc_scale)
+                for obstacle_id, obstacle in self.obstacles.items()
+            }
+        )
 
     def get_all_features(
         self, 
-        person_id: int, 
-        obstacles: list[Obstacle]
+        person_id: int
     ) -> tuple[list[float], list[list[float]], list[list[float]]]:
         person = self.persons[person_id]
         individual_features = person.get_individual_features()
-        interaction_features = self.get_interaction_features(person_id, person)
-        obstacle_features = person.get_obstacle_features(obstacles)
+        interaction_features = self.get_interaction_features(person)
+        obstacle_features = self.get_obstacle_features(person)
         return individual_features, interaction_features, obstacle_features
 
-    def get_interaction_features(self, person_id: int, person: Optional[Person] = None) -> list[list[float]]:
-        person = person if person else self.persons[person_id]
+    def get_interaction_features(self, person: Person) -> list[list[float]]:
         interaction_features = []
         for other_person_id, other_person in self.persons.items():
-            if person_id == other_person_id or other_person.velocity is None:
+            if person.id == other_person_id or other_person.velocity is None:
                 continue
             
             distance = (person.position - other_person.position).magnitude()
@@ -42,7 +58,40 @@ class Frame:
             ])
         return interaction_features
 
+    def get_obstacle_features(self, person: Person) -> list[list[float]]:
+        obstacle_features = []
+        for line in self.obstacles.values():
+            closest_point = closest_point_on_line(person.position, line.p1, line.p2)
+
+            distances, directions = {}, {}
+            for name, point in [('closest', closest_point), ('start', line.p1), ('end', line.p2)]:
+                distances[name] = (person.position - point).magnitude()
+                directions[name] = person.position.direction_to(point)
+
+            obstacle_features.append([
+                distances['closest'],
+                directions['closest'].x,
+                directions['closest'].y,
+                distances['start'],
+                directions['start'].x,
+                directions['start'].y,
+                distances['end'],
+                directions['end'].x,
+                directions['end'].y
+            ])
+        return obstacle_features
+
 class Frames(OrderedDict[int, Frame]):
+    def normalized(
+        self, 
+        pos_scale: Callable[[Point2D], Point2D] = lambda f: f, 
+        vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
+        acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "Frames":
+        return OrderedDict({
+            frame_number: frame.normalized(pos_scale, vel_scale, acc_scale)
+            for frame_number, frame in self.items()
+        })
+
     def filter_by_person(self, person_id: int) -> "Trajectory":
         filtered_records = OrderedDict(
             (frame_number, frame.persons[person_id])
@@ -58,8 +107,7 @@ class Frames(OrderedDict[int, Frame]):
         }
         return Trajectories(filtered_trajectories)
 
-    @classmethod
-    def from_trajectories(cls, trajectories: Trajectories) -> "Frames":
+    def from_trajectories(cls, trajectories: "Trajectories") -> "Frames":
         frame_dict = defaultdict(dict)
         
         for trajectory in trajectories.values():
@@ -72,3 +120,46 @@ class Frames(OrderedDict[int, Frame]):
         }
         
         return cls(OrderedDict(sorted(frames.items())))
+
+    def to_trajectories(self) -> "Trajectories":
+        return Trajectories.from_frames(self)
+
+@dataclass(frozen=True)
+class Trajectory:
+    person_id: int 
+    records: OrderedDict[int, Person]
+
+@dataclass(frozen=True)
+class Trajectories(dict[int, Trajectory]):
+    def filter_by_frame(self, frame_number: int) -> "Frame":
+        persons_in_frame = {
+            trajectory.person_id: trajectory.records[frame_number]
+            for trajectory in self.values()
+            if frame_number in trajectory.records
+        }
+        return Frame(number=frame_number, persons=persons_in_frame)
+
+    def filter_by_frames(self, frame_numbers: list[int]) -> "Frames":
+        filtered_frames = {
+            frame_number: self.filter_by_frame(frame_number)
+            for frame_number in frame_numbers
+        }
+        return Frames(filtered_frames)
+
+    @classmethod
+    def from_frames(cls, frames: Frames) -> "Trajectories":
+        trajectories_dict = defaultdict(OrderedDict)
+        
+        for frame in frames.values():
+            for person_id, person in frame.persons.items():
+                trajectories_dict[person_id][frame.number] = person
+
+        trajectories = {
+            person_id: Trajectory(person_id=person_id, records=OrderedDict(sorted(records.items())))
+            for person_id, records in trajectories_dict.items()
+        }
+        
+        return cls(trajectories)
+
+    def to_frames(self) -> Frames:
+        return Frames.from_trajectories(self)

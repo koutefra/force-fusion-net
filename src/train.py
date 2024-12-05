@@ -5,14 +5,13 @@ import datetime
 import re
 import numpy as np
 import torch
-import torchmetrics
 from data.scene_dataset import SceneDataset
-from data.torch_dataset import TorchSceneDataset
+from data.loaders.juelich_bneck_loader import JuelichBneckLoader
 from models.neural_net_model import NeuralNetModel
 from models.neural_net_predictor import NeuralNetPredictor
 from models.social_force_model import SocialForceModel
 from models.social_force_predictor import SocialForcePredictor
-from entities.features import IndividualFeatures, InteractionFeatures, ObstacleFeatures
+from data.fdm_calculator import FiniteDifferenceCalculator
 import yaml
 from pathlib import Path
 
@@ -41,61 +40,60 @@ def main(args: argparse.Namespace) -> None:
     with open(args.config, "r") as file:
         config = yaml.safe_load(file)
 
-    path = (project_dir / config["dataset_path"]).resolve()
-    format = config["dataset_format"]
-
-    if format == "ndjson":
-        features = SceneDataset.load_features_from_ndjson(
-            path, 
-            n_samples=config['n_samples'] if 'n_samples' in config else None
-        )
-    elif format == "pickle":
-        features = SceneDataset.load_features_from_pickle(path)
+    if config['dataset'] == 'juelich':
+        folder_path = (project_dir / config["data_folder_path"]).resolve()
+        train_paths_names = [((folder_path / (name + '.txt')).resolve(), name) for name in config['train_scenes']]
+        val_paths_names = [((folder_path / (name + '.txt')).resolve(), name) for name in config['val_scenes']]
+        fdm_calculator = FiniteDifferenceCalculator(config['fdm_window_size'])
+        train_dataset = SceneDataset([JuelichBneckLoader(
+            train_paths_names, 
+            config['sampling_step'], 
+            compute_accelerations=False, 
+            fdm_calculator=fdm_calculator)
+        ])
+        val_dataset = SceneDataset([JuelichBneckLoader(
+            val_paths_names, 
+            config['sampling_step'], 
+            compute_accelerations=False, 
+            fdm_calculator=fdm_calculator)
+        ])
     else:
-        raise ValueError(f'Input data format not supported')
-
-    serialized_features = [
-        f for scenes_f in features.values() for scene_f in scenes_f.values() for f in scene_f.to_list()
-    ]
-    random.shuffle(serialized_features)
+        raise ValueError('Dataset ' + config['dataset'] + ' not supported.')
 
     if config['model_type'] == 'neural_net':
+        individual_features_dim = 6
+        interaction_features_dim = 5
+        obstacle_features_dim = 9
         model = NeuralNetModel(
-            IndividualFeatures.dim(), 
-            InteractionFeatures.dim(), 
-            ObstacleFeatures.dim(),
-            config['hidden_dim']
+            individual_features_dim,
+            interaction_features_dim,
+            obstacle_features_dim,
+            config['hidden_dims']
         )
         predictor = NeuralNetPredictor(
             model=model,
+            device=args.device,
             batch_size=config['batch_size'],
-            logdir_path=args.logdir,
-            device=args.device
+            logdir_path=args.logdir
         )
-
-        # split to train/val
-        val_size = int(len(serialized_features) * config['val_ratio'])
-        train_features = serialized_features[val_size:]
-        val_features = serialized_features[:val_size]
-
         predictor.train(
-            train_features,
-            val_features,
+            train_dataset.scenes,
+            val_dataset.scenes,
             learning_rate=float(config['learning_rate']),
             epochs=config['epochs'],
             save_path=os.path.join(args.logdir, 'neural_net_weights.pth')
         )
     elif config['model_type'] == 'social_force':
         model = SocialForceModel(config['dataset_fps'])
-        predictor = SocialForcePredictor(
-            model,
-            logdir_path=args.logdir
-        )
-        predictor.train(
-            data=serialized_features,
-            param_grid=SocialForcePredictor.param_ranges_to_param_grid(config['param_ranges']),
-            save_path=os.path.join(args.logdir, 'social_force_best_grid.json')
-        )
+        # predictor = SocialForcePredictor(
+        #     model,
+        #     logdir_path=args.logdir
+        # )
+        # predictor.train(
+        #     data=serialized_features,
+        #     param_grid=SocialForcePredictor.param_ranges_to_param_grid(config['param_ranges']),
+        #     save_path=os.path.join(args.logdir, 'social_force_best_grid.json')
+        # )
     else:
         raise ValueError(f'No such model {args.model_type}')
 

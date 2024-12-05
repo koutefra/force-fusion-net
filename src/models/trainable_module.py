@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 import os
-from abc import ABC, abstractmethod
 
 import torch
 import torchmetrics
 
 
-class TrainableModule(torch.nn.Module, ABC):
+class TrainableModule(torch.nn.Module):
     """A simple Keras-like module for training with raw PyTorch.
 
     The module provides fit/evaluate/predict methods, computes loss and metrics,
@@ -105,13 +104,14 @@ class TrainableModule(torch.nn.Module, ABC):
                 | ({"lr": self.schedule.get_last_lr()[0]} if self.schedule else {}) \
                 | self.compute_metrics(y_pred, ys, *xs, training=True)
 
-    @abstractmethod
-    def compute_loss(self, y_pred, ys, *xs):
-        pass
+    def compute_loss(self, y_pred, y, *xs):
+        """Compute the loss of the model given the inputs, predictions, and target outputs."""
+        return self.loss(y_pred, y)
 
-    @abstractmethod
-    def compute_metrics(self, y_pred, ys, *xs, training):
-        pass
+    def compute_metrics(self, y_pred, y, *xs, training):
+        """Compute and return metrics given the inputs, predictions, and target outputs."""
+        self.metrics.update(y_pred, y)
+        return self.metrics.compute()
 
     def evaluate(self, dataloader, verbose=1):
         """An evaluation of the model on the given dataset.

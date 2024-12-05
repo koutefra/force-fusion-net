@@ -1,7 +1,6 @@
 from models.base_predictor import BasePredictor
 from entities.vector2d import Acceleration, Velocity, Point2D
 from models.social_force_model import SocialForceModel
-from entities.features import LabeledFeatures, Features
 from tqdm import tqdm
 from typing import Optional
 import json
@@ -16,7 +15,7 @@ class SocialForcePredictor(BasePredictor):
 
     def train(
         self, 
-        data: list[LabeledFeatures], 
+        data: ..., 
         param_grid: list[dict[str, float]],
         save_path: Optional[str],
         metric_type: str = "mae"
@@ -85,5 +84,5 @@ class SocialForcePredictor(BasePredictor):
             for values in product(*param_ranges.values())
         ]
 
-    def predict(self, features: list[Features]) -> list[Acceleration]:
+    def predict(self, features: ...) -> list[Acceleration]:
         return self.model.predict(features)

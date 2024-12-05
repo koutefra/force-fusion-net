@@ -1,6 +1,6 @@
 from entities.vector2d import Velocity, Acceleration
 from collections import OrderedDict, defaultdict
-from entities.trajectory import Trajectories, Trajectory
+from entities.frame import Trajectories, Trajectory
 from entities.person import Person
 
 class FiniteDifferenceCalculator:

@@ -130,13 +130,17 @@ class Acceleration(Point2D):
     def from_velocities(velocities: list[Velocity], delta_times: list[float]) -> "Acceleration":
         return Point2D.calculate_average_change(velocities, delta_times, Acceleration)
 
-def kinematic_equation(cur_positions: Any, cur_velocities: Any, cur_accelerations: Any, delta_times: Any) -> Any:
+def kinematic_equation(cur_positions: Any, cur_velocities: Any, cur_accelerations: Any, delta_times: Any) -> tuple[Any, Any]:
     next_positions = (
         cur_positions
         + cur_velocities * delta_times
         + 0.5 * cur_accelerations * delta_times**2
     )
-    return next_positions
+    next_velocities = (
+        cur_velocities
+        + cur_accelerations * delta_times
+    )
+    return next_positions, next_velocities
 
 def closest_point_on_line(point: Point2D, line_start: Point2D, line_end: Point2D, eps: float = 1e-6) -> Point2D:
     line_vec = line_end - line_start

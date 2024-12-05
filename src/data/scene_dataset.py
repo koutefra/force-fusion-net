@@ -1,11 +1,7 @@
 from entities.scene import Scenes
 from data.loaders.base_loader import BaseLoader
-from entities.features import  SceneFeatures
-from collections import defaultdict
-import json
-import pickle
-import os
-from tqdm import tqdm
+from typing import Callable
+from entities.vector2d import Point2D, Velocity, Acceleration
 
 class SceneDataset:
     scenes = Scenes()
@@ -23,94 +19,24 @@ class SceneDataset:
             scenes = Scenes({**scenes, **loaded_scenes})
         return scenes
 
-    def _process_scenes(
-        self,
-        operation: callable,
-        desc_template: str,
-    ) -> dict[str, dict[str, SceneFeatures]]:
-        features = defaultdict(lambda: dict())
-        for loader_name, loader_scenes in self.scenes.items():
-            for scene_id, scene in tqdm(
-                loader_scenes.items(),
-                desc=desc_template.format(loader_name=loader_name),
-                disable=not self.print_progress
-            ):
-                features[loader_name][scene_id] = operation(scene)
-        return features
+    def normalized(
+        self, 
+        pos_scale: Callable[[Point2D], Point2D] = lambda x: x, 
+        vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
+        acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "SceneDataset":
+        scene_dataset = SceneDataset(loaders=[], print_progress=self.print_progress)
+        scene_dataset.scenes = self.scenes.normalized(pos_scale, vel_scale, acc_scale)
+        return scene_dataset
 
-    def get_features(self) -> dict[str, dict[str, SceneFeatures]]:
-        return self._process_scenes(
-            operation=SceneFeatures.get_scene_features,
-            desc_template="Extracting scene features of dataset {loader_name}..."
-        )
+    def split(self, val_ids: list[str]) -> tuple["SceneDataset", "SceneDataset"]:
+        train_ids = set(self.scenes.keys()) - set(val_ids)
+        train_scenes = Scenes({scene_id: self.scenes[scene_id] for scene_id in train_ids if scene_id in self.scenes})
+        val_scenes = Scenes({scene_id: self.scenes[scene_id] for scene_id in val_ids if scene_id in self.scenes})
 
-    def get_labeled_features(self) -> dict[str, dict[str, SceneFeatures]]:
-        return self._process_scenes(
-            operation=SceneFeatures.get_scene_labeled_features,
-            desc_template="Extracting labeled scene features of dataset {loader_name}..."
-        )
+        train_dataset = SceneDataset(loaders=[], print_progress=self.print_progress)
+        train_dataset.scenes = train_scenes
 
-    def get_scene_features(self, loader_name: str, scene_id: str) -> SceneFeatures:
-        return SceneFeatures.get_scene_features(self.scenes[loader_name][scene_id])
+        val_dataset = SceneDataset(loaders=[], print_progress=self.print_progress)
+        val_dataset.scenes = val_scenes
 
-    def get_scene_labeled_features(self, loader_name: str, scene_id: str) -> SceneFeatures:
-        return SceneFeatures.get_scene_labeled_features(self.scenes[loader_name][scene_id])
-
-    @staticmethod
-    def save_features_as_ndjson(
-        features: dict[str, dict[str, SceneFeatures]], 
-        filepath: str,
-        writing_mode: str = "w"
-    ) -> None:
-        directory = os.path.dirname(filepath)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory)
-
-        with open(f"{filepath}.ndjson", writing_mode) as f:
-            for loader_name, loader_scenes in features.items():
-                for scene_id, scene_features in loader_scenes.items():
-                    for features_dict in scene_features.to_ndjson():
-                        line_to_dump = {"loader": loader_name, "scene": scene_id, **features_dict}
-                        json.dump(line_to_dump, f)
-                        f.write("\n")
-    @staticmethod
-    def load_features_from_ndjson(filepath: str, n_samples: int | None = None) -> dict[str, dict[str, SceneFeatures]]:
-        features = defaultdict(dict)
-        grouped_data = defaultdict(lambda: defaultdict(list))
-
-        with open(filepath, "r") as file:
-            for i, line in enumerate(file):
-                json_object = json.loads(line)
-                loader_name = json_object["loader"]
-                scene_id = json_object["scene"]
-                grouped_data[loader_name][scene_id].append({
-                    "frame_number": json_object["frame_number"],
-                    "person": json_object["person"],
-                    "features": json_object["features"],
-                })
-                if n_samples and i + 1 >= n_samples:
-                    break
-
-        for loader_name, loader_scenes in grouped_data.items():
-            for scene_id, scene_data in loader_scenes.items():
-                features[loader_name][scene_id] = SceneFeatures.from_dict(scene_data)
-
-        return features
-
-    @staticmethod
-    def save_features_as_pickle(
-        features: dict[str, dict[str, SceneFeatures]], 
-        filepath: str
-    ) -> None:
-        directory = os.path.dirname(filepath)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory)
-
-        with open(f"{filepath}.pkl", "wb") as f:
-            pickle.dump(features, f)
-
-    @staticmethod
-    def load_features_from_pickle(filepath: str) -> dict[str, dict[str, SceneFeatures]]:
-        with open(filepath, "rb") as f:
-            features = pickle.load(f)
-        return features
+        return train_dataset, val_dataset

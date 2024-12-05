@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from entities.vector2d import Acceleration
-from entities.features import Features
+from entities.frame import Frame
 from typing import Any
 
 class BasePredictor(ABC):
@@ -9,5 +9,5 @@ class BasePredictor(ABC):
         pass 
 
     @abstractmethod
-    def predict(self, features: list[Features]) -> list[Acceleration]:
+    def predict(self, frame: Frame) -> dict[int, Acceleration]:
         pass
