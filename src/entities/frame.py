@@ -107,7 +107,8 @@ class Frames(OrderedDict[int, Frame]):
         }
         return Trajectories(filtered_trajectories)
 
-    def from_trajectories(cls, trajectories: "Trajectories") -> "Frames":
+    @classmethod
+    def from_trajectories(cls, trajectories: "Trajectories", obstacles: dict[int, LineObstacle]) -> "Frames":
         frame_dict = defaultdict(dict)
         
         for trajectory in trajectories.values():
@@ -115,7 +116,7 @@ class Frames(OrderedDict[int, Frame]):
                 frame_dict[frame_number][trajectory.person_id] = person
         
         frames = {
-            frame_number: Frame(number=frame_number, persons=frame_persons)
+            frame_number: Frame(number=frame_number, persons=frame_persons, obstacles=obstacles)
             for frame_number, frame_persons in frame_dict.items()
         }
         
@@ -129,8 +130,44 @@ class Trajectory:
     person_id: int 
     records: OrderedDict[int, Person]
 
-@dataclass(frozen=True)
+    def get_pred_valid_frame_numbers(self, steps: int, frame_step: int) -> list[int]:
+        if len(self.records) == 0:
+            return []
+
+        frame_numbers = list(self.records.keys())
+        segments = []
+
+        for i in range(len(frame_numbers)):
+            frame_number = frame_numbers[i]
+            person_data = self.records[frame_number]
+            person_valid = person_data.velocity is not None and person_data.goal is not None
+            
+            if person_valid:
+                last_segment_end = segments[-1][1] if segments else None
+
+                if last_segment_end is not None and frame_number == last_segment_end + frame_step:
+                    # Extend the current segment
+                    segments[-1] = (segments[-1][0], frame_number)
+                else:
+                    # Start a new segment
+                    segments.append((frame_number, frame_number))
+
+        valid_frame_numbers = []
+        for start, end in segments:
+            # Compute valid starting frames in the segment
+            valid_starts = range(start, end - (steps - 1) * frame_step, frame_step)
+            valid_frame_numbers.extend(valid_starts)
+
+        return valid_frame_numbers
+
 class Trajectories(dict[int, Trajectory]):
+    @classmethod
+    def from_dict(cls, data_dict):
+        obj = cls()
+        for k, v in data_dict.items():
+            obj[k] = Trajectory(person_id=k, records=v)
+        return obj
+
     def filter_by_frame(self, frame_number: int) -> "Frame":
         persons_in_frame = {
             trajectory.person_id: trajectory.records[frame_number]
@@ -161,5 +198,5 @@ class Trajectories(dict[int, Trajectory]):
         
         return cls(trajectories)
 
-    def to_frames(self) -> Frames:
-        return Frames.from_trajectories(self)
+    def to_frames(self, obstacles: dict[int, LineObstacle]) -> Frames:
+        return Frames.from_trajectories(self, obstacles)

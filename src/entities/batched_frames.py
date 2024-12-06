@@ -13,7 +13,7 @@ class BatchedFrames:
         self.dtype = dtype
         self.steps_count = len(frames[0])
         frames_by_step = [
-            [next(islice(fs.items(), step, step + 1)) for fs in frames]
+            [next(islice(fs.values(), step, step + 1)) for fs in frames]
             for step in range(self.steps_count)
         ]
 
@@ -39,6 +39,7 @@ class BatchedFrames:
         self.person_velocities = new_person_velocities
         self.step = self.step + 1
 
+    @staticmethod
     def batch_focus_persons(
         frames: list[Frame], 
         person_ids: list[int],
@@ -74,7 +75,7 @@ class BatchedFrames:
             other_positions = []
             other_velocities = []
             for other_person_id, other_person in frame.persons.items():
-                if other_person_id != person_id:
+                if other_person_id != person_id and other_person.velocity:
                     other_positions.append(other_person.position.to_numpy())
                     other_velocities.append(other_person.velocity.to_numpy())
 
@@ -159,8 +160,9 @@ class BatchedFrames:
         line_obstacles: torch.Tensor,  # (n_line_obstacles, 4)
         epsilon: float = 1e-8
     ) -> torch.Tensor:
-        p1 = line_obstacles[:, :2]  # (n_line_obstacles, 2)
-        p2 = line_obstacles[:, 2:]  # (n_line_obstacles, 2)
+        # DIM REDUCTION - static obstacles in the scene are presumed now, TO DO.
+        p1 = line_obstacles[:, 0, :2]  # (n_line_obstacles, 2)
+        p2 = line_obstacles[:, 0, 2:]  # (n_line_obstacles, 2)
         p1_to_p2 = p2 - p1  # (n_line_obstacles, 2)
         p1_to_person = person_positions[:, None, :] - p1[None, :, :]  # (batch_size, n_line_obstacles, 2)
         line_lengths_sq = torch.sum(p1_to_p2**2, dim=1, keepdim=True)  # (n_line_obstacles, 1)

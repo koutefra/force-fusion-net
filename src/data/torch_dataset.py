@@ -17,24 +17,24 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         for scene_id, scene in scenes.items():
             f_step = scene.frame_step
             for person_id, trajectory in scene.frames.to_trajectories().items():
-                for frame_number in trajectory.records.keys():
-                    if all((frame_number + i * f_step) in trajectory.records for i in range(steps + 1)):
-                        mapping.append((scene_id, person_id, frame_number))
+                for frame_number in trajectory.get_pred_valid_frame_numbers(steps, f_step):
+                    mapping.append((scene_id, person_id, frame_number))
+        return mapping
 
     def __len__(self) -> int:
         return len(self._mapping)
 
     def __getitem__(self, idx: int) -> tuple[tuple[Frames, int], tuple[torch.Tensor, int]]:
-        scene_id, person_id, start_f_number = self._mapping(idx)
+        scene_id, person_id, start_f_number = self._mapping[idx]
         scene = self.scenes[scene_id]
         f_step = scene.frame_step
-        last_f_number = start_f_number + (self.steps + 1) * f_step
+        last_f_number = start_f_number + self.steps * f_step
         frames = {
             frame_number: scene.frames[frame_number]
-            for frame_number in range(start_f_number, last_f_number, f_step)
+            for frame_number in range(start_f_number, last_f_number + 1, f_step)
         }
         last_position = frames[last_f_number].persons[person_id].position
-        delta_time = 1 / scene.fps
+        delta_time = torch.tensor(1 / scene.fps, device=self.device, dtype=self.dtype)
         return (frames, person_id), (last_position.to_tensor(self.device, self.dtype), delta_time)
 
     def prepare_batch(

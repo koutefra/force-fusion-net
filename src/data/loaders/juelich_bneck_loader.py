@@ -3,7 +3,7 @@ from entities.vector2d import Point2D
 from collections import defaultdict, OrderedDict
 from entities.scene import Scene, Scenes
 from entities.person import Person
-from entities.obstacle import Obstacle
+from entities.obstacle import LineObstacle
 from entities.frame import Frames, Trajectories, Trajectory
 from data.fdm_calculator import FiniteDifferenceCalculator
 from typing import Optional
@@ -13,6 +13,7 @@ class JuelichBneckLoader(BaseLoader):
     # fps should be 12.5, according to this: https://arxiv.org/pdf/physics/0702004
     fps = 12.5
     goal_position = Point2D(x=4.9, y=0.0)
+    bounding_box = (Point2D(x=-4.0, y=-4.0), Point2D(x=5.0, y=-4.0))
 
     BOUNDARIES = {
         "b090": "POLYGON ((-4 -4, -4 5, 4 5, 4 -4), (-3.5 -3.5, -3.5 0, -0.45 0, -0.45 4, -0.5 4, -0.5 0.05, -3.55 0.05, -3.55 -3.5), (3.5 -3.5, 3.5 0, 0.45 0, 0.45 4, 0.5 4, 0.5 0.05, 3.55 0.05, 3.55 -3.5))",
@@ -75,25 +76,28 @@ class JuelichBneckLoader(BaseLoader):
 
         if self.compute_accelerations:
             trajectories = self.fdm_calculator.compute_accelerations(trajectories, self.fps)
-            
+
         # Apply sampling step
         trajectories = {
-            person_id: OrderedDict(filter(
-                lambda item: item[0] % self.sampling_step == 0, trajectory.records.items()
-            ))
+            person_id: Trajectory(
+                person_id=person_id,
+                records=OrderedDict(sorted(filter(
+                    lambda item: item[0] % self.sampling_step == 0, trajectory.records.items()
+                )))
+            )
             for person_id, trajectory in trajectories.items()
         }
 
-        obstacles = [
-            Obstacle(start_point=obstacle[i], end_point=obstacle[i + 1]) 
+        obstacles = {
+            i: LineObstacle(p1=obstacle[i], p2=obstacle[i + 1]) 
             for obstacle in JuelichBneckLoader.parse_polygon_string(JuelichBneckLoader.BOUNDARIES[scene_name])
             for i in range(len(obstacle) - 1)
-        ]
+        }
 
         return Scene(
             id=f"juelich_{scene_name}",
-            obstacles=obstacles,
-            frames=Frames.from_trajectories(trajectories),
+            frames=Frames.from_trajectories(trajectories, obstacles),
+            bounding_box=self.bounding_box,
             fps=self.fps
         )
 

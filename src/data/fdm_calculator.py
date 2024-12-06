@@ -23,19 +23,22 @@ class FiniteDifferenceCalculator:
         out_prop: str, 
         fps: float
     ) -> Trajectories:
-        new_trajectories = defaultdict(OrderedDict)
+        new_trajectories_data = {}
         for person_id, person_trajectory in trajectories.items():
             computed_properties = self._compute_fdm_property(person_trajectory, in_prop, out_prop, fps)
+            new_records = OrderedDict()
             for frame_number, computed_value in computed_properties.items():
                 ori_person = person_trajectory.records[frame_number]
                 new_person = Person(
+                    id=person_id,
                     position=ori_person.position,
                     goal=ori_person.goal,
                     velocity=ori_person.velocity if out_prop != "velocity" else computed_value,
                     acceleration=ori_person.acceleration if out_prop != "acceleration" else computed_value
                 )
-                new_trajectories[person_id][frame_number] = new_person
-        return new_trajectories
+                new_records[frame_number] = new_person
+            new_trajectories_data[person_id] = Trajectory(person_id=person_id, records=new_records)
+        return Trajectories(new_trajectories_data)
 
     def _compute_fdm_property(
         self,

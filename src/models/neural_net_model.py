@@ -23,7 +23,7 @@ class NeuralNetModel(TrainableModule):
         self.fc_obstacle = nn.Linear(obstacle_fts_dim, hidden_dims[0])
 
         # make for hidden_dims of fcs
-        combined_input_dim = individual_fts_dim + 2 * hidden_dims[-1]
+        combined_input_dim = individual_fts_dim + 2 * hidden_dims[1]
         self.fcs_combined = self._build_mlp(combined_input_dim, hidden_dims[1:])
         self.output_layer = nn.Linear(hidden_dims[-1], self.output_dim)
 
@@ -142,7 +142,7 @@ class NeuralNetModel(TrainableModule):
         next_pos_predicted, next_vel_predicted = kinematic_equation(
             cur_positions=cur_positions,
             cur_velocities=cur_velocities,
-            delta_times=delta_times,
+            delta_times=delta_times.unsqueeze(-1),
             cur_accelerations=pred_accs
         )
         return next_pos_predicted, next_vel_predicted

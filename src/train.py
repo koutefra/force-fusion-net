@@ -79,6 +79,7 @@ def main(args: argparse.Namespace) -> None:
         predictor.train(
             train_dataset.scenes,
             val_dataset.scenes,
+            prediction_steps=config['prediction_steps'],
             learning_rate=float(config['learning_rate']),
             epochs=config['epochs'],
             save_path=os.path.join(args.logdir, 'neural_net_weights.pth')

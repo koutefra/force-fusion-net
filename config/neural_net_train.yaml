@@ -3,6 +3,7 @@ batch_size: 256
 epochs: 5
 learning_rate: 1e-3
 hidden_dims: [1024, 1024, 512]
+prediction_steps: 10
 
 dataset: juelich
 data_folder_path: "./data/datasets/juelich/bottleneck"
