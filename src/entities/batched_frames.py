@@ -68,32 +68,22 @@ class BatchedFrames:
         other_positions_all = []
         other_velocities_all = []
         for frame, person_id in zip(frames, person_ids):
-            other_positions = [
-                person.position.to_numpy()
-                for pid, person in frame.persons.items()
+            valid_other_persons = [
+                person for pid, person in frame.persons.items()
                 if pid != person_id and person.velocity
             ]
-            other_velocities = [
-                person.velocity.to_numpy()
-                for pid, person in frame.persons.items()
-                if pid != person_id and person.velocity
-            ]
+            num_others = len(valid_other_persons)
 
-            # Pad positions and velocities to `max_others` using NumPy
-            num_others = len(other_positions)
-            if num_others < max_others:
-                pad_size = (max_others - num_others, 2)
-                other_positions = np.vstack([
-                    np.array(other_positions),
-                    np.full(pad_size, padding_value)
-                ])
-                other_velocities = np.vstack([
-                    np.array(other_velocities),
-                    np.full(pad_size, padding_value)
-                ])
-            else:
-                other_positions = np.array(other_positions)
-                other_velocities = np.array(other_velocities)
+            other_positions = np.full((max_others, 2), padding_value, dtype=np.float32)
+            other_velocities = np.full((max_others, 2), padding_value, dtype=np.float32)
+
+            # Fill with valid positions and velocities
+            if num_others > 0:
+                valid_positions = np.array([p.position.to_numpy() for p in valid_other_persons], dtype=np.float32)
+                valid_velocities = np.array([p.velocity.to_numpy() for p in valid_other_persons], dtype=np.float32)
+
+                other_positions[:num_others, :] = valid_positions
+                other_velocities[:num_others, :] = valid_velocities
         
             other_positions_all.append(other_positions)
             other_velocities_all.append(other_velocities)
@@ -109,7 +99,7 @@ class BatchedFrames:
         dtype: torch.dtype,
         padding_value: float = float("nan")
     ) -> torch.Tensor:
-        max_obstacles = max(len(frame.obstacles) - 1 for frame in frames)
+        max_obstacles = max(len(frame.obstacles) for frame in frames)
         obstacle_positions_all = []
         for frame in frames:
             obstacle_positions = [
@@ -199,10 +189,9 @@ class BatchedFrames:
         dists = torch.norm(diffs, dim=3, keepdim=True)  # (batch_size, n_line_obstacles, 3, 1)
         directions = diffs / (dists + epsilon)  # (batch_size, n_line_obstacles, 3, 2)
 
-
         obstacle_features = torch.cat([dists, directions], dim=3)  # (batch_size, n_line_obstacles, 3, 3)
         # Reshape to final output shape: (batch_size, n_line_obstacles, 9)
-        mask_expanded = mask.unsqueeze(-1).unsqueeze(-1)  # (batch_size, n_line_obstacles, 1, 1)
+        mask_expanded = mask.unsqueeze(-1)  # (batch_size, n_line_obstacles, 1)
         return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1) * mask_expanded
 
     def compute_all_features(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
