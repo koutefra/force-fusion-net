@@ -40,7 +40,7 @@ class TorchSceneDataset(torch.utils.data.Dataset):
     def prepare_batch(
         self, 
         data: list[tuple[tuple[Frames, int], tuple[torch.Tensor, int]]]
-    ) -> tuple[BatchedFrames, tuple[torch.Tensor, torch.Tensor]]:
+    ) -> tuple[tuple[BatchedFrames, torch.Tensor], torch.Tensor]:
         inputs, labels = zip(*data)
         ground_truths, delta_times = zip(*labels)
         ground_truths_tensor = torch.stack(ground_truths).to(self.device, dtype=self.dtype)
@@ -49,4 +49,4 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         frames_list, person_ids_list = zip(*inputs)
         batched_frames = BatchedFrames(frames_list, person_ids_list, self.device, self.dtype)
 
-        return batched_frames, (ground_truths_tensor, delta_times_tensor)
+        return (batched_frames, delta_times_tensor), ground_truths_tensor

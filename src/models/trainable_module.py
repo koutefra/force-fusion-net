@@ -71,10 +71,6 @@ class TrainableModule(torch.nn.Module):
             data_and_progress = self._tqdm(
                 dataloader, epoch_message, unit="batch", leave=False, disable=None if verbose == 2 else not verbose)
             for xs, ys in data_and_progress:
-                assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
-                assert isinstance(ys, (tuple, torch.Tensor)), "The output must be either a single tensor or a tuple."
-                xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
-                ys = tuple(y.to(self.device) for y in (ys if isinstance(ys, tuple) else (ys,)))
                 logs = self.train_step(xs, ys)
                 message = [epoch_message] + [f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()]
                 data_and_progress.set_description(" ".join(message), refresh=False)
@@ -104,6 +100,15 @@ class TrainableModule(torch.nn.Module):
                 | ({"lr": self.schedule.get_last_lr()[0]} if self.schedule else {}) \
                 | self.compute_metrics(y_pred, ys, *xs, training=True)
 
+    def compute_loss(self, y_pred, y, *xs):
+        """Compute the loss of the model given the inputs, predictions, and target outputs."""
+        return self.loss(y_pred, y)
+
+    def compute_metrics(self, y_pred, y, *xs, training):
+        """Compute and return metrics given the inputs, predictions, and target outputs."""
+        self.metrics.update(y_pred, y)
+        return self.metrics.compute()
+
     def evaluate(self, dataloader, verbose=1):
         """An evaluation of the model on the given dataset.
 
@@ -114,22 +119,9 @@ class TrainableModule(torch.nn.Module):
         self.loss_metric.reset()
         self.metrics.reset()
         for xs, ys in dataloader:
-            assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
-            assert isinstance(ys, (tuple, torch.Tensor)), "The output must be either a single tensor or a tuple."
-            xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
-            ys = tuple(y.to(self.device) for y in (ys if isinstance(ys, tuple) else (ys,)))
             logs = self.test_step(xs, ys)
         verbose and print("Evaluation", *[f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()])
         return logs
-
-    def compute_loss(self, y_pred, y, *xs):
-        """Compute the loss of the model given the inputs, predictions, and target outputs."""
-        return self.loss(y_pred, y)
-
-    def compute_metrics(self, y_pred, y, *xs, training):
-        """Compute and return metrics given the inputs, predictions, and target outputs."""
-        self.metrics.update(y_pred, y)
-        return self.metrics.compute()
 
     def test_step(self, xs, ys):
         """An overridable method performing a single evaluation step.
@@ -156,8 +148,6 @@ class TrainableModule(torch.nn.Module):
         predictions = []
         for batch in dataloader:
             xs = batch[0] if isinstance(batch, tuple) else batch
-            assert isinstance(xs, (tuple, torch.Tensor)), "The input must be either a single tensor or a tuple."
-            xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
             predictions.extend(self.predict_step(xs, as_numpy=as_numpy))
         return predictions
 
