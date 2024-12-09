@@ -1,6 +1,7 @@
 import torch
 from itertools import islice
 from entities.frame import Frames, Frame
+import numpy as np
 
 class BatchedFrames:
     def __init__(self, frames: list[Frames], person_ids: list[int], device: torch.device, dtype: torch.dtype):
@@ -46,14 +47,9 @@ class BatchedFrames:
         device: torch.device,
         dtype: torch.dtype
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        person_positions = []
-        person_velocities = []
-        person_goals = []
-        for frame, person_id in zip(frames, person_ids):
-            person = frame.persons[person_id]
-            person_positions.append(person.position.to_numpy())
-            person_velocities.append(person.velocity.to_numpy())
-            person_goals.append(person.goal.to_numpy())
+        person_positions = np.array([frame.persons[pid].position.to_numpy() for frame, pid in zip(frames, person_ids)])
+        person_velocities = np.array([frame.persons[pid].velocity.to_numpy() for frame, pid in zip(frames, person_ids)])
+        person_goals = np.array([frame.persons[pid].goal.to_numpy() for frame, pid in zip(frames, person_ids)])
         return (
             torch.tensor(person_positions, dtype=dtype, device=device),
             torch.tensor(person_velocities, dtype=dtype, device=device),
@@ -72,22 +68,38 @@ class BatchedFrames:
         other_positions_all = []
         other_velocities_all = []
         for frame, person_id in zip(frames, person_ids):
-            other_positions = []
-            other_velocities = []
-            for other_person_id, other_person in frame.persons.items():
-                if other_person_id != person_id and other_person.velocity:
-                    other_positions.append(other_person.position.to_numpy())
-                    other_velocities.append(other_person.velocity.to_numpy())
+            other_positions = [
+                person.position.to_numpy()
+                for pid, person in frame.persons.items()
+                if pid != person_id and person.velocity
+            ]
+            other_velocities = [
+                person.velocity.to_numpy()
+                for pid, person in frame.persons.items()
+                if pid != person_id and person.velocity
+            ]
 
-            # Pad the arrays to match `max_others`
-            while len(other_positions) < max_others:
-                other_positions.append([padding_value, padding_value])
-                other_velocities.append([padding_value, padding_value])
+            # Pad positions and velocities to `max_others` using NumPy
+            num_others = len(other_positions)
+            if num_others < max_others:
+                pad_size = (max_others - num_others, 2)
+                other_positions = np.vstack([
+                    np.array(other_positions),
+                    np.full(pad_size, padding_value)
+                ])
+                other_velocities = np.vstack([
+                    np.array(other_velocities),
+                    np.full(pad_size, padding_value)
+                ])
+            else:
+                other_positions = np.array(other_positions)
+                other_velocities = np.array(other_velocities)
+        
             other_positions_all.append(other_positions)
             other_velocities_all.append(other_velocities)
         return (
-            torch.tensor(other_positions_all, dtype=dtype, device=device),
-            torch.tensor(other_velocities_all, dtype=dtype, device=device)
+            torch.tensor(np.array(other_positions_all), dtype=dtype, device=device),
+            torch.tensor(np.array(other_velocities_all), dtype=dtype, device=device)
         )
 
     @staticmethod
@@ -100,14 +112,22 @@ class BatchedFrames:
         max_obstacles = max(len(frame.obstacles) - 1 for frame in frames)
         obstacle_positions_all = []
         for frame in frames:
-            obstacle_positions = []
-            for obstacle in frame.obstacles.values():
-                points = obstacle.p1.to_list() + obstacle.p2.to_list()
-                obstacle_positions.append(points)
-            # Pad the arrays to match `max_obstacles`
-            while len(obstacle_positions) < max_obstacles:
-               obstacle_positions.append([padding_value, padding_value])
+            obstacle_positions = [
+                obstacle.p1.to_list() + obstacle.p2.to_list()
+                for obstacle in frame.obstacles.values()
+            ]
+            # Pad using NumPy to match `max_obstacles`
+            num_obstacles = len(obstacle_positions)
+            if num_obstacles < max_obstacles:
+                pad_size = (max_obstacles - num_obstacles, len(obstacle_positions[0]))
+                obstacle_positions = np.vstack([
+                    np.array(obstacle_positions),
+                    np.full(pad_size, padding_value)
+                ])
+            else:
+                obstacle_positions = np.array(obstacle_positions)
             obstacle_positions_all.append(obstacle_positions)
+        obstacle_positions_all = np.array(obstacle_positions_all)
         return torch.tensor(obstacle_positions_all, dtype=dtype, device=device)
 
     @staticmethod
@@ -119,10 +139,8 @@ class BatchedFrames:
     ) -> torch.Tensor:
         diffs_to_goal = person_goals - person_positions
         dists_to_goal = torch.norm(diffs_to_goal, dim=1, keepdim=True)  # (batch_size, 1)
-        dists_to_goal = torch.clamp(dists_to_goal, min=epsilon)  # Avoid division by zero
-        directions = diffs_to_goal / dists_to_goal  # (batch_size, 2)
+        directions = diffs_to_goal / (dists_to_goal + epsilon)  # (batch_size, 2)
         vel_towards_goal = torch.sum(person_velocities * directions, dim=1, keepdim=True)  # (batch_size, 1)
-
         features = torch.cat((
             person_velocities,  # Velocity components (batch_size, 2)
             dists_to_goal,      # Distance to goal (batch_size, 1)
@@ -137,14 +155,26 @@ class BatchedFrames:
         person_velocities: torch.Tensor,  # (batch_size, 2)
         other_positions: torch.Tensor,  # (batch_size, M, 2)
         other_velocities: torch.Tensor,  # (batch_size, M, 2)
+        mask: torch.Tensor,  # (batch_size)
         epsilon: float = 1e-8
     ) -> torch.Tensor:
+        mask_expanded = mask.unsqueeze(-1)
+        
         diffs = other_positions - person_positions[:, None, :]  # (batch_size, M, 2)
+        diffs = torch.where(mask_expanded, diffs, torch.zeros_like(diffs))
         distances = torch.norm(diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
-        distances = torch.clamp(distances, min=epsilon)  # Avoid division by zero
-        directions = diffs / distances  # (batch_size, M, 2)
-        relative_velocities = torch.norm(other_velocities - person_velocities[:, None, :], dim=2, keepdim=True)  # (batch_size, M, 1)
+        distances = torch.where(mask_expanded, distances, torch.zeros_like(distances))
+
+        directions = diffs / (distances + epsilon)  # (batch_size, M, 2)
+        directions = torch.where(mask_expanded, directions, torch.zeros_like(directions))
+
+        vel_diffs = other_velocities - person_velocities[:, None, :]
+        vel_diffs = torch.where(mask_expanded, vel_diffs, torch.zeros_like(vel_diffs))
+        relative_velocities = torch.norm(vel_diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
+        relative_velocities = torch.where(mask_expanded, relative_velocities, torch.zeros_like(relative_velocities))
+
         alignments = torch.sum(person_velocities[:, None, :] * directions, dim=2, keepdim=True)  # (batch_size, M, 1)
+        alignments = torch.where(mask_expanded, alignments, torch.zeros_like(alignments))
 
         interaction_features = torch.cat((
             distances,         # Distance (batch_size, M, 1)
@@ -157,28 +187,35 @@ class BatchedFrames:
     @staticmethod
     def compute_obstacle_features(
         person_positions: torch.Tensor,  # (batch_size, 2)
-        line_obstacles: torch.Tensor,  # (n_line_obstacles, 4)
+        line_obstacles: torch.Tensor,  # (batch_size, n_line_obstacles, 4)
+        mask: torch.Tensor,  # (batch_size, n_line_obstacles)
         epsilon: float = 1e-8
     ) -> torch.Tensor:
-        # DIM REDUCTION - static obstacles in the scene are presumed now, TO DO.
-        p1 = line_obstacles[:, 0, :2]  # (n_line_obstacles, 2)
-        p2 = line_obstacles[:, 0, 2:]  # (n_line_obstacles, 2)
-        p1_to_p2 = p2 - p1  # (n_line_obstacles, 2)
-        p1_to_person = person_positions[:, None, :] - p1[None, :, :]  # (batch_size, n_line_obstacles, 2)
-        line_lengths_sq = torch.sum(p1_to_p2**2, dim=1, keepdim=True)  # (n_line_obstacles, 1)
-        projections = torch.sum(p1_to_person * p1_to_p2[None, :, :], dim=2) / torch.clamp(line_lengths_sq.T, min=epsilon)  # (batch_size, n_line_obstacles)
-        projections = torch.clamp(projections, min=0, max=1)  # Clamp to segment
-        closest_points = p1[None, :, :] + projections[:, :, None] * p1_to_p2[None, :, :]  # (batch_size, n_line_obstacles, 2)
+        p1 = line_obstacles[:, :, :2]  # (batch_size, n_line_obstacles, 2)
+        p2 = line_obstacles[:, :, 2:]  # (batch_size, n_line_obstacles, 2)
+        p1_to_p2 = p2 - p1  # (batch_size, n_line_obstacles, 2)
 
-        obstacle_features = []
-        for point_positions in [closest_points, p1[None, :, :], p2[None, :, :]]:
-            diffs = point_positions - person_positions[:, None, :]  # (batch_size, n_line_obstacles, 2)
-            dists = torch.norm(diffs, dim=2, keepdim=True)  # (batch_size, n_line_obstacles, 1)
-            dists = torch.clamp(dists, min=epsilon)  # Avoid division by zero
-            directions = diffs / dists  # (batch_size, n_line_obstacles, 2)
-            obstacle_features.append(torch.cat([dists, directions], dim=2))  # (batch_size, n_line_obstacles, 3)
+        # Compute projections of the person onto the line segment
+        p1_to_person = person_positions[:, None, :] - p1  # (batch_size, n_line_obstacles, 2)
+        line_lengths_sq = torch.sum(p1_to_p2**2, dim=2, keepdim=True)  # (batch_size, n_line_obstacles, 1)
+        projections = torch.sum(p1_to_person * p1_to_p2, dim=2, keepdim=True) / (line_lengths_sq + epsilon)
+        projections = torch.clamp(projections, min=0, max=1)  # Clamp to segment [0, 1]
+        closest_points = p1 + projections * p1_to_p2  # (batch_size, n_line_obstacles, 2)
 
-        return torch.cat(obstacle_features, dim=2)  # (batch_size, n_line_obstacles, 9)
+        # Combine p1, p2, and closest_points into a single tensor
+        all_points = torch.stack([closest_points, p1, p2], dim=2)  # (batch_size, n_line_obstacles, 3, 2)
+        person_positions_expanded = person_positions[:, None, None, :]  # (batch_size, 1, 1, 2)
+        diffs = all_points - person_positions_expanded  # (batch_size, n_line_obstacles, 3, 2)
+        dists = torch.norm(diffs, dim=3, keepdim=True)  # (batch_size, n_line_obstacles, 3, 1)
+        directions = diffs / (dists + epsilon)  # (batch_size, n_line_obstacles, 3, 2)
+
+        mask_expanded = mask.unsqueeze(-1).unsqueeze(-1)  # (batch_size, n_line_obstacles, 1, 1)
+        dists = torch.where(mask_expanded, dists, torch.zeros_like(dists))
+        directions = torch.where(mask_expanded, directions, torch.zeros_like(directions))
+
+        obstacle_features = torch.cat([dists, directions], dim=3)  # (batch_size, n_line_obstacles, 3, 3)
+        # Reshape to final output shape: (batch_size, n_line_obstacles, 9)
+        return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1)
 
     def compute_all_features(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         individual_features = self.compute_individual_features(
@@ -190,10 +227,12 @@ class BatchedFrames:
             self.person_positions,
             self.person_velocities,
             self.other_positions_by_step[self.step],
-            self.other_velocities_by_step[self.step]
+            self.other_velocities_by_step[self.step],
+            mask=~torch.isnan(self.other_positions_by_step[self.step]).any(dim=-1)
         )
         obstacle_features = self.compute_obstacle_features(
             self.person_positions,
-            self.obstacles_by_step[self.step]
+            self.obstacles_by_step[self.step],
+            mask=~torch.isnan(self.obstacles_by_step[self.step]).any(dim=-1)
         )
         return individual_features, interaction_features, obstacle_features

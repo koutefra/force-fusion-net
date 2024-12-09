@@ -36,19 +36,8 @@ class NeuralNetModel(TrainableModule):
         # x_individual.shape: [batch_size, individual_fts_dim] 
         # x_interaction.shape: [batch_size, l, interaction_fts_dim]
         # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
-
-        def process_var_length_features(x, fc_layer):
-            if x.numel() > 0:
-                orig_shape = x.shape
-                x = x.view(-1, x.size(-1))
-                x = F.relu(fc_layer(x))
-                return x.view(*orig_shape[:-1], -1).sum(dim=1)
-            else:
-                return torch.zeros(x_individual.size(0), fc_layer.out_features, device=x.device, dtype=x.dtype)
-
-        x_interaction = process_var_length_features(x_interaction, self.fc_interaction)
-        x_obstacle = process_var_length_features(x_obstacle, self.fc_obstacle)
-
+        x_interaction = self._process_feature(x_interaction, self.fc_interaction)
+        x_obstacle = self._process_feature(x_obstacle, self.fc_obstacle)
         combined_features = torch.cat([x_individual, x_interaction, x_obstacle], dim=-1)
         output = self.fcs_combined(combined_features)
         output = self.output_layer(output)
@@ -111,7 +100,7 @@ class NeuralNetModel(TrainableModule):
                     )
                     batched_frames.update(new_pos, new_vel)
 
-                logs = self.backprop(pred_accs, gts, *xs)
+                logs = self.backprop(new_pos, gts, *xs)
                 message = [epoch_message] + [f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()]
                 data_and_progress.set_description(" ".join(message), refresh=False)
             if dev is not None:
@@ -130,6 +119,17 @@ class NeuralNetModel(TrainableModule):
         A dictionary with the loss and metrics should be returned."""
         loss = self.compute_loss(y_pred, ys, *xs)
         loss.backward()
+        print(loss)
+
+        # Compute the maximum absolute gradient
+        max_abs_grad = 0.0
+        with torch.no_grad():
+            for name, param in self.named_parameters():  # Assuming self.model holds your network
+                if param.grad is not None:  # Check if gradient exists
+                    param_max_grad = param.grad.abs().max().item()
+                    max_abs_grad = max(max_abs_grad, param_max_grad)
+                    print(f"Gradient max abs for {name}: {param_max_grad}")
+
         with torch.no_grad():
             self.optimizer.step()
             self.schedule is not None and self.schedule.step()
@@ -177,9 +177,9 @@ class NeuralNetModel(TrainableModule):
             layers.append(nn.ReLU())
         return nn.Sequential(*layers)
 
-    def _process_feature(self, x: torch.Tensor, layer: nn.Linear, out_dim: int) -> torch.Tensor:
+    def _process_feature(self, x: torch.Tensor, layer: nn.Linear) -> torch.Tensor:
         if x.numel() > 0:
             x = F.relu(layer(x))
             return torch.sum(x, dim=1)
         else:
-            return torch.zeros(x.shape[0], out_dim, device=self.device)
+            return torch.zeros(x.shape[0], layer.out_features, device=self.device)
