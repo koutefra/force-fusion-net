@@ -159,22 +159,12 @@ class BatchedFrames:
         epsilon: float = 1e-8
     ) -> torch.Tensor:
         mask_expanded = mask.unsqueeze(-1)
-        
         diffs = other_positions - person_positions[:, None, :]  # (batch_size, M, 2)
-        diffs = torch.where(mask_expanded, diffs, torch.zeros_like(diffs))
         distances = torch.norm(diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
-        distances = torch.where(mask_expanded, distances, torch.zeros_like(distances))
-
         directions = diffs / (distances + epsilon)  # (batch_size, M, 2)
-        directions = torch.where(mask_expanded, directions, torch.zeros_like(directions))
-
         vel_diffs = other_velocities - person_velocities[:, None, :]
-        vel_diffs = torch.where(mask_expanded, vel_diffs, torch.zeros_like(vel_diffs))
         relative_velocities = torch.norm(vel_diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
-        relative_velocities = torch.where(mask_expanded, relative_velocities, torch.zeros_like(relative_velocities))
-
         alignments = torch.sum(person_velocities[:, None, :] * directions, dim=2, keepdim=True)  # (batch_size, M, 1)
-        alignments = torch.where(mask_expanded, alignments, torch.zeros_like(alignments))
 
         interaction_features = torch.cat((
             distances,         # Distance (batch_size, M, 1)
@@ -182,7 +172,7 @@ class BatchedFrames:
             relative_velocities,  # Relative velocity (batch_size, M, 1)
             alignments         # Alignment (batch_size, M, 1)
         ), dim=2)  # Shape: (batch_size, M, 5)
-        return interaction_features
+        return interaction_features * mask_expanded
 
     @staticmethod
     def compute_obstacle_features(
@@ -209,13 +199,11 @@ class BatchedFrames:
         dists = torch.norm(diffs, dim=3, keepdim=True)  # (batch_size, n_line_obstacles, 3, 1)
         directions = diffs / (dists + epsilon)  # (batch_size, n_line_obstacles, 3, 2)
 
-        mask_expanded = mask.unsqueeze(-1).unsqueeze(-1)  # (batch_size, n_line_obstacles, 1, 1)
-        dists = torch.where(mask_expanded, dists, torch.zeros_like(dists))
-        directions = torch.where(mask_expanded, directions, torch.zeros_like(directions))
 
         obstacle_features = torch.cat([dists, directions], dim=3)  # (batch_size, n_line_obstacles, 3, 3)
         # Reshape to final output shape: (batch_size, n_line_obstacles, 9)
-        return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1)
+        mask_expanded = mask.unsqueeze(-1).unsqueeze(-1)  # (batch_size, n_line_obstacles, 1, 1)
+        return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1) * mask_expanded
 
     def compute_all_features(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         individual_features = self.compute_individual_features(
@@ -223,16 +211,21 @@ class BatchedFrames:
             self.person_velocities,
             self.person_goals
         )
+        interaction_features_mask = ~torch.isnan(self.other_positions_by_step[self.step]).any(dim=-1)
+        other_positions = torch.nan_to_num(self.other_positions_by_step[self.step])
+        other_velocities = torch.nan_to_num(self.other_velocities_by_step[self.step])
         interaction_features = self.compute_interaction_features(
             self.person_positions,
             self.person_velocities,
-            self.other_positions_by_step[self.step],
-            self.other_velocities_by_step[self.step],
-            mask=~torch.isnan(self.other_positions_by_step[self.step]).any(dim=-1)
+            other_positions,
+            other_velocities,
+            mask=interaction_features_mask
         )
+        obstacle_features_mask = ~torch.isnan(self.obstacles_by_step[self.step]).any(dim=-1)
+        obstacle_features = torch.nan_to_num(self.obstacles_by_step[self.step])
         obstacle_features = self.compute_obstacle_features(
             self.person_positions,
-            self.obstacles_by_step[self.step],
-            mask=~torch.isnan(self.obstacles_by_step[self.step]).any(dim=-1)
+            obstacle_features,
+            mask=obstacle_features_mask
         )
         return individual_features, interaction_features, obstacle_features
