@@ -28,6 +28,66 @@ class Frame:
             }
         )
 
+    def get_person_ids_outside(self, bounding_box: tuple[float, float]) -> list[int]:
+        return [
+            pid 
+            for pid, person in self.persons.items() 
+            if not person.position.is_within(bounding_box[0], bounding_box[1])
+        ]
+
+    def get_person_ids_at_goal(self, goal_radius: float) -> list[int]:
+        return [
+            pid 
+            for pid, person in self.persons.items() 
+            if person.position.is_within(person.goal - goal_radius, person.goal + goal_radius)
+        ]
+
+    def remove_persons(self, person_ids: list[int]) -> "Frame":
+        return Frame(
+            number=self.number,
+            persons={pid: person for pid, person in self.persons.items() if pid not in person_ids},
+            obstacles=self.obstacles
+        )
+
+    def filter_invalid_persons(self) -> "Frame":
+        return Frame(
+            number=self.number,
+            persons={pid: person for pid, person in self.persons.items() if person.goal and person.velocity},
+            obstacles=self.obstacles
+        )
+
+    def apply_kinematic_equation(self, delta_time: float) -> "Frame":
+        return Frame(
+            number=self.number,
+            persons={pid: person.apply_kinematic_equation(delta_time) for pid, person in self.persons.items()},
+            obstacles=self.obstacles
+        )
+
+    def add_persons(self, persons: dict[int, Person]) -> "Frame":
+        new_persons = {**persons, **self.persons}
+        return Frame(
+            number=self.number,
+            persons=new_persons,
+            obstacles=self.obstacles
+        )
+
+    def set_accelerations(self, accs: dict[int, Acceleration]) -> "Frame":
+        persons_to_update = {}
+        persons_to_keep = {}
+
+        for pid, person in self.persons.items():
+            if pid in accs:
+                persons_to_update[pid] = person.set_acceleration(accs[pid])
+            else:
+                persons_to_keep[pid] = person
+
+        new_persons = {**persons_to_keep, **persons_to_update}
+        return Frame(
+            number=self.number,
+            persons=new_persons,
+            obstacles=self.obstacles
+        )
+
     def get_all_features(
         self, 
         person_id: int

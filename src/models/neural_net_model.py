@@ -46,9 +46,8 @@ class NeuralNetModel(TrainableModule):
 
     def forward(self, batched_frames: BatchedFrames, delta_times: torch.Tensor) -> torch.Tensor:
         for _ in range(batched_frames.steps_count):
-            xs = batched_frames.compute_all_features()
-            xs = tuple(x.to(self.device) for x in (xs if isinstance(xs, tuple) else (xs,)))
-            pred_accs = self.forward_single(*xs)
+            features = batched_frames.compute_all_features()
+            pred_accs = self.forward_single(*features)
             new_pos, new_vel = self.apply_predictions(
                 cur_positions=batched_frames.person_positions,
                 cur_velocities=batched_frames.person_velocities,
@@ -67,22 +66,37 @@ class NeuralNetModel(TrainableModule):
         )
         return next_pos_predicted, next_vel_predicted
 
+    def predict_step(self, xs, as_numpy=True):
+        """An overridable method performing a single prediction step."""
+        with torch.no_grad():
+            batched_frames = xs[0]
+            features = batched_frames.compute_all_features()
+            batch = self.forward_single(*features)
+            if type(batch) is list:
+                batch = torch.stack(batch)
+            return batch.numpy(force=True) if as_numpy else batch
+
     @staticmethod
     def from_weight_file(path: str, device: str | torch.device = "cpu") -> "NeuralNetModel":
         state_dict = torch.load(path, map_location=device)
-
-        # Infer the dimensions from the loaded state dict
-        individual_fts_dim = state_dict['fc_individual.weight'].size(1)
+        individual_fts_dim = state_dict['fcs_combined.0.weight'].size(1) - state_dict['fc_interaction.weight'].size(0) - state_dict['fc_obstacle.weight'].size(0)
         interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
         obstacle_fts_dim = state_dict['fc_obstacle.weight'].size(1)
-        hidden_dim = state_dict['fc_individual.weight'].size(0)
+        
+        hidden_dims = [state_dict['fc_interaction.weight'].size(0)]
+        
+        current_dim = state_dict['fcs_combined.0.weight'].size(0)
+        hidden_dims.append(current_dim)
+        layer_index = 2
+        while f'fcs_combined.{layer_index}.weight' in state_dict:
+            hidden_dims.append(state_dict[f'fcs_combined.{layer_index}.weight'].size(0))
+            layer_index += 2  # Skipping over activation layers
 
-        # Create the model with inferred dimensions
         model = NeuralNetModel(
             individual_fts_dim=individual_fts_dim,
             interaction_fts_dim=interaction_fts_dim,
             obstacle_fts_dim=obstacle_fts_dim,
-            hidden_dim=hidden_dim
+            hidden_dims=hidden_dims
         )
 
         # Load weights

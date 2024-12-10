@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from entities.vector2d import Point2D, Velocity, Acceleration
 from typing import Optional, Callable
-from entities.frame import Frames
+from tqdm import tqdm
+from entities.frame import Frames, Frame
 
 @dataclass(frozen=True)
 class Scene:
@@ -26,86 +27,45 @@ class Scene:
             tag=self.tag
         )
 
-    # def simulate(
-    #     self, 
-    #     predict_acc_func: Callable[[list["Features"]], list[Acceleration]],
-    #     total_steps: int,
-    #     goal_radius: float = 50,
-    #     person_ids: Optional[list[int]] = None
-    # ) -> "Scene":
-    #     from entities.features import Features
-    #     frame_numbers = list(self.frames.keys())
-    #     frame_step = frame_numbers[1] - frame_numbers[0]
-    #     first_frame_persons = self.frames[frame_numbers[0]]
-    #     delta_time = frame_step / self.fps
-    #     recomputed_frames = {frame_numbers[0]: first_frame_persons}
-    #     step = 0
-    #     frame_number = frame_numbers[0]
-    #     next_frame_number = frame_number + frame_step
-    #     simulation_person_out_ids = set()
-    #     with tqdm(total=total_steps, initial=step, desc="Simulation processing steps", unit="step") as pbar:
-    #         while len(recomputed_frames) > 0 and total_steps > step:
-    #             recomputed_frame_no_acc = recomputed_frames[frame_number]
-    #             features_dict: dict[int, self.Features] = {
-    #                 person_id: Features.get_features(
-    #                     person=person,
-    #                     person_id=person_id,
-    #                     frame=recomputed_frame_no_acc,
-    #                     obstacles=self.obstacles
-    #                 )
-    #                 for person_id, person in recomputed_frame_no_acc.items()
-    #                 if (not person_ids or person_id in person_ids)
-    #                 and person.velocity is not None and person.goal is not None
-    #             }
-    #             preds_acc = predict_acc_func(features_dict.values())
-    #             recomputed_frame = {**recomputed_frame_no_acc, **{
-    #                 person_id: Person(
-    #                     position=recomputed_frame_no_acc[person_id].position,
-    #                     velocity=recomputed_frame_no_acc[person_id].velocity,
-    #                     goal=recomputed_frame_no_acc[person_id].goal,
-    #                     acceleration=pred_acc
-    #                 )
-    #                 for person_id, pred_acc in zip(features_dict.keys(), preds_acc)
-    #             }}
-    #             recomputed_frames[frame_number] = recomputed_frame
-    #             next_recomputed_frame_no_acc = {
-    #                 **(
-    #                     {
-    #                         pid: person 
-    #                         for pid, person in self.frames[next_frame_number].items() 
-    #                         if pid not in simulation_person_out_ids
-    #                     } if next_frame_number in self.frames else {}
-    #                     ),
-    #                 **{
-    #                     person_id: Person(
-    #                         position=person.position + person.velocity * delta_time + 0.5 * person.acceleration * delta_time**2,
-    #                         velocity=person.velocity + person.acceleration * delta_time,
-    #                         goal=person.goal,
-    #                         acceleration=Acceleration.zero()
-    #                     )
-    #                     for person_id, person in recomputed_frame.items()
-    #                     if person.velocity is not None and person.goal is not None
-    #                 }
-    #             }
-    #             next_recomputed_frame_no_acc = {
-    #                 person_id: person
-    #                 for person_id, person in next_recomputed_frame_no_acc.items()
-    #                 if person.position.is_within(self.bounding_box[0], self.bounding_box[1]) 
-    #                 and not person.position.is_within(person.goal - goal_radius, person.goal + goal_radius)
-    #             }
-    #             recomputed_frames[next_frame_number] = next_recomputed_frame_no_acc
-    #             simulation_person_out_ids.update(recomputed_frame.keys() - next_recomputed_frame_no_acc.keys()) 
-    #             step += 1
-    #             frame_number = next_frame_number
-    #             next_frame_number = frame_number + frame_step
-    #             pbar.update(1)
-    #     return Scene(
-    #         id=self.id,
-    #         obstacles=self.obstacles,
-    #         frames=recomputed_frames,
-    #         fps=self.fps,
-    #         tag=self.tag
-    #     )
+    def simulate(
+        self,
+        predict_acc_func: Callable[[Frame], list[Acceleration]],
+        total_steps: int,
+        goal_radius: float,
+        person_ids: Optional[list[int]] = None
+    ) -> "Scene":
+        frame_numbers = list(self.frames.keys())
+        first_frame_number, first_frame = frame_numbers[0], self.frames[frame_numbers[0]]
+        resulting_frames = [first_frame.filter_invalid_persons().remove_persons(person_ids if person_ids else [])]
+        delta_time = self.frame_step / self.fps
+        finished_person_ids = set(person_ids or [])
+        for step in tqdm(range(first_frame_number, first_frame_number + total_steps * self.frame_step, self.frame_step), desc="Computing the simulation..."):
+            frame = resulting_frames[-1]
+            resulting_frames.append(frame)
+            acc_pred = predict_acc_func(frame)
+            frame = frame.set_accelerations(acc_pred)
+            resulting_frames[-1] = frame  # resave the currect frame enriched with the accelerations
+
+            next_frame = frame.apply_kinematic_equation(delta_time)
+            finished_person_ids.update(next_frame.get_person_ids_at_goal(goal_radius))
+            finished_person_ids.update(next_frame.get_person_ids_outside(self.bounding_box))
+
+            new_persons = {}
+            if step + self.frame_step in self.frames:
+                new_persons = self.frames[step + self.frame_step].filter_invalid_persons().persons
+            new_persons = {pid: person for pid, person in new_persons.items() if pid not in finished_person_ids}
+
+            next_frame = next_frame.add_persons(new_persons)
+            resulting_frames.append(next_frame)
+
+        return Scene(
+            id=self.id,
+            frames={first_frame_number + i * self.frame_step: frame for frame, i in zip(resulting_frames, range(len(resulting_frames)))},
+            bounding_box=self.bounding_box,
+            fps=self.fps,
+            frame_step=self.frame_step,
+            tag=self.tag
+        )
 
 class Scenes(dict[str, Scene]):
     def normalized(

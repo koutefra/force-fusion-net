@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from entities.vector2d import Point2D, Velocity, Acceleration
+from entities.vector2d import kinematic_equation
 from typing import Optional, Callable
 
 @dataclass(frozen=True)
@@ -21,6 +22,30 @@ class Person:
             goal=pos_scale(self.goal),
             velocity=vel_scale(self.velocity) if self.velocity else None,
             acceleration=acc_scale(self.acceleration) if self.acceleration else None
+        )
+
+    
+    def apply_kinematic_equation(self, delta_time: float) -> "Person":
+        next_position, next_velocity= kinematic_equation(
+            cur_positions=self.position,
+            cur_velocities=self.velocity,
+            delta_times=delta_time,
+            cur_accelerations=self.acceleration
+        )
+        return Person(
+            id=self.id,
+            position=next_position,
+            goal=self.goal,
+            velocity=next_velocity
+        )
+
+    def set_acceleration(self, acc: Acceleration) -> "Person":
+        return Person(
+            id=self.id,
+            position=self.position,
+            goal=self.goal,
+            velocity=self.velocity,
+            acceleration=acc
         )
 
     def get_individual_features(self) -> list[float]:

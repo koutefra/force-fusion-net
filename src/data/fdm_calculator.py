@@ -1,5 +1,5 @@
 from entities.vector2d import Velocity, Acceleration
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from entities.frame import Trajectories, Trajectory
 from entities.person import Person
 

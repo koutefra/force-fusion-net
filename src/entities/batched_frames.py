@@ -64,7 +64,7 @@ class BatchedFrames:
         dtype: torch.dtype,
         padding_value: float = float("nan"),
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        max_others = max(len(frame.persons) - 1 for frame in frames)
+        max_others = max(1, max(len(frame.persons) - 1 for frame in frames))
         other_positions_all = []
         other_velocities_all = []
         for frame, person_id in zip(frames, person_ids):
@@ -99,7 +99,7 @@ class BatchedFrames:
         dtype: torch.dtype,
         padding_value: float = float("nan")
     ) -> torch.Tensor:
-        max_obstacles = max(len(frame.obstacles) for frame in frames)
+        max_obstacles = max(1, max(len(frame.obstacles) for frame in frames))
         obstacle_positions_all = []
         for frame in frames:
             obstacle_positions = [

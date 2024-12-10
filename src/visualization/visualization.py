@@ -4,7 +4,10 @@ import shutil
 import imageio
 from pygame import Surface
 from entities.vector2d import Point2D
-from entities.scene import Scene, Person, Frame, Obstacle
+from entities.scene import Scene
+from entities.person import Person
+from entities.frame import Frame
+from entities.obstacle import LineObstacle
 import math
 import sys
 from typing import Optional
@@ -144,14 +147,14 @@ class Visualizer:
     def draw_obstacles(
         self, 
         screen: Surface, 
-        obstacles: list[Obstacle], 
+        obstacles: list[LineObstacle], 
         min_pos: Point2D, 
         spatial_scale: float
     ) -> None:
         """Draw all obstacles as connected lines between each pair of vertices."""
         for obstacle in obstacles:
-            scaled_start_point = (obstacle.start_point - min_pos) * spatial_scale
-            scaled_end_point = (obstacle.end_point - min_pos) * spatial_scale
+            scaled_start_point = (obstacle.p1 - min_pos) * spatial_scale
+            scaled_end_point = (obstacle.p2 - min_pos) * spatial_scale
             pygame.draw.line(
                 screen, 
                 self.obstacle_color, 
@@ -182,14 +185,13 @@ class Visualizer:
         person_ids: Optional[list[int]] = None
     ) -> None:
         """Draw all persons and obstacles for a single frame."""
-        for person_id, person in frame.items():
+        for person_id, person in frame.persons.items():
             color = self.focus_person_color if person_ids and person_id in person_ids else self.other_person_color
             self.draw_person(screen, person, color, min_pos, spatial_scale)
-        self.draw_obstacles(screen, scene.obstacles, min_pos, spatial_scale)
+        self.draw_obstacles(screen, list(frame.obstacles.values()), min_pos, spatial_scale)
 
         if self.output_dir:
             pygame.image.save(screen, os.path.join(self.output_dir, f"frames/frame_{frame_number}.png"))
-
 
     def draw_scene(
         self, 
@@ -203,16 +205,9 @@ class Visualizer:
         screen, spatial_scale = self.setup_screen(scene, min_pos, max_pos)
         clock = pygame.time.Clock()
         scaled_fps = float(scene.fps * time_scale)
-        font = pygame.font.SysFont(None, self.text_size)
-        labels = [
-            ("Persons", self.other_person_color),
-            ("Velocity", self.velocity_color),
-            ("Acceleration", self.acceleration_color),
-        ]
 
         for frame_number, frame in scene.frames.items():
             self.draw_frame(screen, scene, frame_number, frame, min_pos, spatial_scale, person_ids)
-            # self.draw_labels(screen, labels, font)
             pygame.display.flip()
             clock.tick(scaled_fps)
             screen.fill(self.background_color)

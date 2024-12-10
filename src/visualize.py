@@ -14,8 +14,8 @@ import random
 import json
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
 parser.add_argument("--dataset_type", required=True, type=str, help="The dataset type.")
+parser.add_argument("--dataset_path", required=True, type=str, help="The dataset path.")
 parser.add_argument("--dataset_name", required=True, type=str, help="The dataset name.")
 parser.add_argument("--predictor_path", required=False, type=str, help="The trained model paths.")
 parser.add_argument("--predictor_type",  type=str, default="gt", help="The trained model type.")
@@ -24,6 +24,7 @@ parser.add_argument("--time_scale", default=1.0, type=float, help="Time scale of
 parser.add_argument("--sampling_step", default=1, type=int, help="Dataset sampling step.")
 parser.add_argument("--animation_steps", default=300, type=int, help="How many steps should be simulated.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
+parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
 
 def main(args: argparse.Namespace) -> None:
     np.random.seed(args.seed)
@@ -32,8 +33,12 @@ def main(args: argparse.Namespace) -> None:
     # load data
     if args.dataset_type == 'juelich_bneck':
         fdm_calculator = FiniteDifferenceCalculator(args.fdm_win_size)
-        loader = JuelichBneckLoader([(args.dataset_path, args.dataset_name)], args.sampling_step, fdm_calculator)
-        scene_dataset = SceneDataset({'juelich_bneck': loader})
+        dataset = SceneDataset([JuelichBneckLoader(
+            [(args.dataset_path, args.dataset_name)], 
+            args.sampling_step, 
+            compute_accelerations=True, 
+            fdm_calculator=fdm_calculator)
+        ])
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
@@ -42,7 +47,7 @@ def main(args: argparse.Namespace) -> None:
     if args.predictor_path:
         if args.predictor_type == 'neural_net':
             model = NeuralNetModel.from_weight_file(args.predictor_path)
-            predictor = NeuralNetPredictor(model)
+            predictor = NeuralNetPredictor(model, device=args.device)
         elif args.predictor_type == 'social_force':
             with open(args.predictor_path, "r") as file:
                 param_grid = json.load(file)
@@ -54,22 +59,13 @@ def main(args: argparse.Namespace) -> None:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
         
     visualizer = Visualizer()
-    scene_id = "b090"
-    scene = scene_dataset.scenes['juelich_bneck'][scene_id]
+    scene = next(iter(dataset.scenes.values()))
 
     if predictor:
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
-            total_steps=args.animation_steps
-        )
-    else:
-        reduced_frames = OrderedDict(list(scene.frames.items())[:args.animation_steps])
-        scene = Scene(
-            id=scene.id,
-            obstacles=scene.obstacles,
-            frames=reduced_frames,
-            fps=scene.fps,
-            tag=scene.tag
+            total_steps=args.animation_steps,
+            goal_radius=0.3
         )
 
     visualizer.visualize(scene, time_scale=args.time_scale, desc=args.predictor_type)

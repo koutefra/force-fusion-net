@@ -60,11 +60,11 @@ class NeuralNetPredictor(BasePredictor):
     def predict(self, frame: Frame) -> dict[int, Acceleration]:
         mock_scene = Scene(
             id='mock', 
-            frames=Frames({0: frame}), 
+            frames=Frames({frame.number: frame}), 
             bounding_box=(Point2D.zero, Point2D.zero),
             fps=float('nan')
         )
-        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), device=self.device, dtype=self.dtype) 
+        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), steps=0, device=self.device, dtype=self.dtype) 
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, collate_fn=dataset.prepare_batch)
         preds_acc = self.model.predict(loader, as_numpy=True)
         preds_acc = {
