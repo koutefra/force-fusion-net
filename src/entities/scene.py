@@ -55,7 +55,7 @@ class Scene:
                 new_persons = self.frames[step + self.frame_step].filter_invalid_persons().persons
             new_persons = {pid: person for pid, person in new_persons.items() if pid not in finished_person_ids}
 
-            next_frame = next_frame.add_persons(new_persons)
+            next_frame = next_frame.add_persons(new_persons).remove_persons(finished_person_ids)
             resulting_frames.append(next_frame)
 
         return Scene(

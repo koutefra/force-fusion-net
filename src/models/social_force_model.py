@@ -1,10 +1,10 @@
-from entities.vector2d import Point2D, Velocity, Acceleration 
-import math
+from entities.batched_frames import BatchedFrames
+import numpy as np
+import torch
 
 class SocialForceModel:
     def __init__(
         self, 
-        param_valus_to_cm: bool, 
         A_interaction: float = 2.0,  # Interaction force constant, (m/s^(-2)) 
         A_obstacle: float = 6.0,  # Interaction force constant, (m/s^(-2)) 
         B_interaction: float = 0.3,  # Interaction decay constant, m
@@ -12,55 +12,69 @@ class SocialForceModel:
         tau: float = 0.3,  # Relaxation time constant, s
         desired_speed: float = 0.8,  # m/s
     ):
-        distance_scale = 100 if param_valus_to_cm else 1
-        self.A_interaction = A_interaction * distance_scale
-        self.A_obstacle = A_obstacle * distance_scale
-        self.B_interaction = B_interaction * distance_scale
-        self.B_obstacle = B_obstacle * distance_scale
+        self.A_interaction = A_interaction
+        self.A_obstacle = A_obstacle
+        self.B_interaction = B_interaction
+        self.B_obstacle = B_obstacle
         self.tau = tau
-        self.desired_speed = desired_speed * distance_scale
+        self.desired_speed = desired_speed
 
-    def _desired_force(self, f: ...) -> Acceleration:
-        dir_to_goal = Point2D(x=f.dir_x_to_goal, y=f.dir_y_to_goal)
-        velocity = Velocity(x=f.vel_x, y=f.vel_y)
-        desired_velocity = dir_to_goal * self.desired_speed
-        desired_acceleration = (desired_velocity - velocity) * (1 / self.tau)
-        return Acceleration(desired_acceleration.x, desired_acceleration.y)
+    def _desired_force(
+        self, 
+        dir_x_to_goal: torch.Tensor, 
+        dir_y_to_goal: torch.Tensor,
+        velocity_x: torch.Tensor,
+        velocity_y: torch.Tensor
+    ) -> torch.Tensor:
+        dir_to_goal = torch.stack((dir_x_to_goal, dir_y_to_goal), dim=-1)
+        norm = torch.norm(dir_to_goal, dim=-1, keepdim=True)
+        normalized_dir_to_goal = dir_to_goal / norm
+        desired_velocity = normalized_dir_to_goal * self.desired_speed
+        velocity = torch.stack((velocity_x, velocity_y), dim=-1)
+        desired_acceleration = (desired_velocity - velocity) / self.tau
+        return desired_acceleration  # a tensor of shape [n, 2]
 
-    def _compute_force(self, features: list[tuple[Point2D, float]], A: float, B: float) -> Acceleration:
-        """Compute the total force exerted by multiple other positions on a person."""
-        total_force_x = 0.0
-        total_force_y = 0.0
+    def _compute_force(
+        self,
+        direction_x: torch.Tensor,
+        direction_y: torch.Tensor,
+        distance: torch.Tensor,
+        A: float, 
+        B: float,
+        mask: torch.Tensor
+    ) -> torch.Tensor:
+        force_magnitude = A * torch.exp(-distance / B)
+        force_magnitude *= mask
+        total_force_x = -torch.sum(direction_x * force_magnitude, dim=1)
+        total_force_y = -torch.sum(direction_y * force_magnitude, dim=1)
+        return torch.stack((total_force_x, total_force_y), dim=-1)
 
-        for direction, distance in features:
-            force_magnitude = A * math.exp(-distance / B)
-            total_force_x += - direction.x * force_magnitude
-            total_force_y += - direction.y * force_magnitude
-
-        return Acceleration(x=total_force_x, y=total_force_y)
-
-    def _interaction_force(self, fs: ...) -> Acceleration:
-        """Compute the total interaction force from all other pedestrians."""
-        features = [
-            (Point2D(x=f.dir_x_to_p, y=f.dir_y_to_p), f.dist_to_p)
-            for f in fs
-        ]
-        return self._compute_force(features, self.A_interaction, self.B_interaction)
-
-    def _obstacle_force(self, fs: ...) -> Acceleration:
-        """Compute the total force exerted by all obstacles."""
-        features = [
-            (Point2D(x=f.dir_x_to_o_cls, y=f.dir_y_to_o_cls), f.dist_to_o_cls)
-            for f in fs
-        ]
-        return self._compute_force(features, self.A_obstacle, self.B_obstacle)
-
-    def predict(self, features: ...) -> list[Acceleration]: 
-        preds_acc = []
-        for f in features:
-            desired_force = self._desired_force(f.individual_features)
-            interaction_force = self._interaction_force(f.interaction_features)
-            obstacle_force = self._obstacle_force(f.obstacle_features)
-            total_force = desired_force + interaction_force + obstacle_force
-            preds_acc.append(total_force)
-        return preds_acc
+    def predict(self, batched_frames: BatchedFrames, as_numpy: bool = True) -> torch.Tensor | np.ndarray: 
+        if batched_frames.steps_count != 1:
+            raise ValueError("Social force model does not allow multiple steps ahead prediction.")
+        features = batched_frames.compute_all_features()
+        x_individual, (x_interaction, interaction_mask), (x_obstacle, obstacle_mask) = features
+        desired_force = self._desired_force(
+            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_x')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_y')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('vel_x')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('vel_y')]
+        )
+        interaction_force = self._compute_force(
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_x')],
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_y')],
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dist')],
+            self.A_interaction,
+            self.B_interaction,
+            interaction_mask
+        )
+        obstacle_force = self._compute_force(
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_x')],
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_y')],
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dist_closest')],
+            self.A_obstacle,
+            self.B_obstacle,
+            obstacle_mask
+        )
+        total_force = desired_force + interaction_force + obstacle_force
+        return total_force.numpy(force=True) if as_numpy else total_force

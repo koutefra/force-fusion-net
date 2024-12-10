@@ -51,8 +51,8 @@ def main(args: argparse.Namespace) -> None:
         elif args.predictor_type == 'social_force':
             with open(args.predictor_path, "r") as file:
                 param_grid = json.load(file)
-            model = SocialForceModel(param_valus_to_cm=True, **param_grid)
-            predictor = SocialForcePredictor(model)
+            model = SocialForceModel(**param_grid)
+            predictor = SocialForcePredictor(model, args.device)
         elif args.predictor_type == 'gt':
             pass
         else:
@@ -65,7 +65,7 @@ def main(args: argparse.Namespace) -> None:
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
             total_steps=args.animation_steps,
-            goal_radius=0.3
+            goal_radius=0.5
         )
 
     visualizer.visualize(scene, time_scale=args.time_scale, desc=args.predictor_type)

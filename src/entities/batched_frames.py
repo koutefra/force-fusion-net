@@ -4,13 +4,21 @@ from entities.frame import Frames, Frame
 import numpy as np
 
 class BatchedFrames:
-    def __init__(self, frames: list[Frames], person_ids: list[int], device: torch.device, dtype: torch.dtype):
+    def __init__(
+        self, 
+        frames: list[Frames], 
+        person_ids: list[int], 
+        device: torch.device, 
+        epsilon: float = 1e-8,
+        dtype: torch.dtype = torch.float32
+    ):
         if len(frames) != len(person_ids):
             raise ValueError("Person ids must match to the frames.")
         if len(frames) == 0:
             raise ValueError("No data.")
 
         self.device = device
+        self.epsilon = epsilon
         self.dtype = dtype
         self.steps_count = len(frames[0])
         frames_by_step = [
@@ -25,13 +33,19 @@ class BatchedFrames:
             dtype
         )
 
-        self.other_positions_by_step, self.other_velocities_by_step, self.obstacles_by_step = [], [], []
+        self.other_positions_by_step = []
+        self.other_velocities_by_step = []
+        self.other_mask_by_step = []
+        self.obstacles_by_step = []
+        self.obstacle_mask_by_step = []
         for frames in frames_by_step:
-            other_positions, other_velocities = self.batch_other_persons(frames, person_ids, device, dtype)
-            obstacles = self.batch_obstacles(frames, device, dtype)
+            other_positions, other_velocities, other_mask = self.batch_other_persons(frames, person_ids, device, dtype)
+            obstacles, obstacle_mask = self.batch_obstacles(frames, device, dtype)
             self.other_positions_by_step.append(other_positions)
             self.other_velocities_by_step.append(other_velocities)
+            self.other_mask_by_step.append(other_mask)
             self.obstacles_by_step.append(obstacles)
+            self.obstacle_mask_by_step.append(obstacle_mask)
 
         self.step = 0
 
@@ -61,46 +75,49 @@ class BatchedFrames:
         frames: list[Frame], 
         person_ids: list[int], 
         device: torch.device,
-        dtype: torch.dtype,
-        padding_value: float = float("nan"),
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        dtype: torch.dtype
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         max_others = max(1, max(len(frame.persons) - 1 for frame in frames))
         other_positions_all = []
         other_velocities_all = []
+        mask_all = []
+
         for frame, person_id in zip(frames, person_ids):
-            valid_other_persons = [
-                person for pid, person in frame.persons.items()
-                if pid != person_id and person.velocity
-            ]
+            valid_other_persons = [person for pid, person in frame.persons.items()
+                                if pid != person_id and person.velocity]
+
             num_others = len(valid_other_persons)
+            other_positions = np.full((max_others, 2), 0.0, dtype=np.float32)
+            other_velocities = np.full((max_others, 2), 0.0, dtype=np.float32)
+            mask = np.full((max_others,), 0.0, dtype=bool)
 
-            other_positions = np.full((max_others, 2), padding_value, dtype=np.float32)
-            other_velocities = np.full((max_others, 2), padding_value, dtype=np.float32)
-
-            # Fill with valid positions and velocities
             if num_others > 0:
                 valid_positions = np.array([p.position.to_numpy() for p in valid_other_persons], dtype=np.float32)
                 valid_velocities = np.array([p.velocity.to_numpy() for p in valid_other_persons], dtype=np.float32)
 
                 other_positions[:num_others, :] = valid_positions
                 other_velocities[:num_others, :] = valid_velocities
-        
+                mask[:num_others] = True
+
             other_positions_all.append(other_positions)
             other_velocities_all.append(other_velocities)
+            mask_all.append(mask)
+
         return (
             torch.tensor(np.array(other_positions_all), dtype=dtype, device=device),
-            torch.tensor(np.array(other_velocities_all), dtype=dtype, device=device)
+            torch.tensor(np.array(other_velocities_all), dtype=dtype, device=device),
+            torch.tensor(np.array(mask_all), dtype=torch.bool, device=device)
         )
 
     @staticmethod
     def batch_obstacles(
         frames: list[Frame], 
         device: torch.device,
-        dtype: torch.dtype,
-        padding_value: float = float("nan")
-    ) -> torch.Tensor:
+        dtype: torch.dtype
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         max_obstacles = max(1, max(len(frame.obstacles) for frame in frames))
         obstacle_positions_all = []
+        mask_all = []
         for frame in frames:
             obstacle_positions = [
                 obstacle.p1.to_list() + obstacle.p2.to_list()
@@ -108,24 +125,31 @@ class BatchedFrames:
             ]
             # Pad using NumPy to match `max_obstacles`
             num_obstacles = len(obstacle_positions)
-            if num_obstacles < max_obstacles:
-                pad_size = (max_obstacles - num_obstacles, len(obstacle_positions[0]))
-                obstacle_positions = np.vstack([
-                    np.array(obstacle_positions),
-                    np.full(pad_size, padding_value)
-                ])
+            mask = np.zeros(max_obstacles, dtype=bool)
+            if num_obstacles > 0:
+                obstacle_positions = np.array(obstacle_positions, dtype=np.float32)
+                mask[:num_obstacles] = True  # Update mask to True where data is valid
+                if num_obstacles < max_obstacles:
+                    pad_size = (max_obstacles - num_obstacles, len(obstacle_positions[0]))
+                    obstacle_positions = np.vstack([
+                        obstacle_positions,
+                        np.full(pad_size, 0.0, dtype=np.float32)
+                    ])
             else:
-                obstacle_positions = np.array(obstacle_positions)
+                obstacle_positions = np.full((max_obstacles, 4), 0.0, dtype=np.float32)
             obstacle_positions_all.append(obstacle_positions)
-        obstacle_positions_all = np.array(obstacle_positions_all)
-        return torch.tensor(obstacle_positions_all, dtype=dtype, device=device)
+            mask_all.append(mask)
+        return (
+            torch.tensor(np.array(obstacle_positions_all), dtype=dtype, device=device),
+            torch.tensor(np.array(mask_all), dtype=torch.bool, device=device)
+        )
 
     @staticmethod
     def compute_individual_features(
         person_positions: torch.Tensor,  # (batch_size, 2)
         person_velocities: torch.Tensor,  # (batch_size, 2)
         person_goals: torch.Tensor,  # (batch_size, 2)
-        epsilon: float = 1e-8
+        epsilon: float
     ) -> torch.Tensor:
         diffs_to_goal = person_goals - person_positions
         dists_to_goal = torch.norm(diffs_to_goal, dim=1, keepdim=True)  # (batch_size, 1)
@@ -140,36 +164,50 @@ class BatchedFrames:
         return features
 
     @staticmethod
+    def get_individual_feature_mapping():
+        feature_names = ['vel_x', 'vel_y', 'goal_dist', 'goal_dir_x', 'goal_dir_y', 'goal_vel']
+        return {name: index for index, name in enumerate(feature_names)}
+
+    @staticmethod
+    def get_individual_feature_index(name: str):
+        return BatchedFrames.get_individual_feature_mapping()[name]
+
+    @staticmethod
     def compute_interaction_features(
         person_positions: torch.Tensor,  # (batch_size, 2)
         person_velocities: torch.Tensor,  # (batch_size, 2)
         other_positions: torch.Tensor,  # (batch_size, M, 2)
         other_velocities: torch.Tensor,  # (batch_size, M, 2)
-        mask: torch.Tensor,  # (batch_size)
-        epsilon: float = 1e-8
+        epsilon: float
     ) -> torch.Tensor:
-        mask_expanded = mask.unsqueeze(-1)
         diffs = other_positions - person_positions[:, None, :]  # (batch_size, M, 2)
         distances = torch.norm(diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
         directions = diffs / (distances + epsilon)  # (batch_size, M, 2)
         vel_diffs = other_velocities - person_velocities[:, None, :]
         relative_velocities = torch.norm(vel_diffs, dim=2, keepdim=True)  # (batch_size, M, 1)
         alignments = torch.sum(person_velocities[:, None, :] * directions, dim=2, keepdim=True)  # (batch_size, M, 1)
-
         interaction_features = torch.cat((
             distances,         # Distance (batch_size, M, 1)
             directions,        # Direction components (batch_size, M, 2)
             relative_velocities,  # Relative velocity (batch_size, M, 1)
             alignments         # Alignment (batch_size, M, 1)
         ), dim=2)  # Shape: (batch_size, M, 5)
-        return interaction_features * mask_expanded
+        return interaction_features
+
+    @staticmethod
+    def get_interaction_feature_mapping():
+        feature_names = ['dist', 'dir_x', 'dir_y', 'rel_vel', 'alig']
+        return {name: index for index, name in enumerate(feature_names)}
+
+    @staticmethod
+    def get_interaction_feature_index(name: str):
+        return BatchedFrames.get_interaction_feature_mapping()[name]
 
     @staticmethod
     def compute_obstacle_features(
         person_positions: torch.Tensor,  # (batch_size, 2)
         line_obstacles: torch.Tensor,  # (batch_size, n_line_obstacles, 4)
-        mask: torch.Tensor,  # (batch_size, n_line_obstacles)
-        epsilon: float = 1e-8
+        epsilon: float
     ) -> torch.Tensor:
         p1 = line_obstacles[:, :, :2]  # (batch_size, n_line_obstacles, 2)
         p2 = line_obstacles[:, :, 2:]  # (batch_size, n_line_obstacles, 2)
@@ -191,30 +229,49 @@ class BatchedFrames:
 
         obstacle_features = torch.cat([dists, directions], dim=3)  # (batch_size, n_line_obstacles, 3, 3)
         # Reshape to final output shape: (batch_size, n_line_obstacles, 9)
-        mask_expanded = mask.unsqueeze(-1)  # (batch_size, n_line_obstacles, 1)
-        return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1) * mask_expanded
+        return obstacle_features.view(obstacle_features.size(0), obstacle_features.size(1), -1)
 
-    def compute_all_features(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    @staticmethod
+    def get_obstacle_feature_mapping():
+        feature_names = [
+            'dist_closest', 'dir_closest_x', 'dir_closest_y', 
+            'dist_p1', 'dir_p1_x', 'dir_p1_y',
+            'dist_p2', 'dir_p2_x', 'dir_p2_y'
+        ]
+        return {name: index for index, name in enumerate(feature_names)}
+
+    @staticmethod
+    def get_obstacle_feature_index(name: str):
+        return BatchedFrames.get_obstacle_feature_mapping()[name]
+
+    def compute_all_features(
+        self
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Returns preprocessed tensor features. 
+        
+        The first tensor in the tuple is reserved for the individual features. The second represents
+        the interaction features together with its mask. Third, also with mask, corresponds to the
+        obstacle features.
+        """
         individual_features = self.compute_individual_features(
             self.person_positions,
             self.person_velocities,
-            self.person_goals
+            self.person_goals,
+            self.epsilon
         )
-        interaction_features_mask = ~torch.isnan(self.other_positions_by_step[self.step]).any(dim=-1)
-        other_positions = torch.nan_to_num(self.other_positions_by_step[self.step])
-        other_velocities = torch.nan_to_num(self.other_velocities_by_step[self.step])
         interaction_features = self.compute_interaction_features(
             self.person_positions,
             self.person_velocities,
-            other_positions,
-            other_velocities,
-            mask=interaction_features_mask
+            self.other_positions_by_step[self.step],
+            self.other_velocities_by_step[self.step],
+            self.epsilon
         )
-        obstacle_features_mask = ~torch.isnan(self.obstacles_by_step[self.step]).any(dim=-1)
-        obstacle_features = torch.nan_to_num(self.obstacles_by_step[self.step])
         obstacle_features = self.compute_obstacle_features(
             self.person_positions,
-            obstacle_features,
-            mask=obstacle_features_mask
+            self.obstacles_by_step[self.step],
+            self.epsilon
         )
-        return individual_features, interaction_features, obstacle_features
+        interaction = (interaction_features, self.other_mask_by_step[self.step])
+        obstacle = (obstacle_features, self.obstacle_mask_by_step[self.step])
+        return individual_features, interaction, obstacle

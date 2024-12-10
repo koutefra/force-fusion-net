@@ -47,6 +47,6 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         delta_times_tensor = torch.stack(delta_times).to(self.device, dtype=self.dtype)
 
         frames_list, person_ids_list = zip(*inputs)
-        batched_frames = BatchedFrames(frames_list, person_ids_list, self.device, self.dtype)
+        batched_frames = BatchedFrames(frames_list, person_ids_list, self.device, dtype=self.dtype)
 
         return (batched_frames, delta_times_tensor), ground_truths_tensor

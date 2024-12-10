@@ -1,81 +1,95 @@
 from models.base_predictor import BasePredictor
 from entities.vector2d import Acceleration, Velocity, Point2D
+from entities.frame import Frame, Frames
+from entities.batched_frames import BatchedFrames
 from models.social_force_model import SocialForceModel
 from tqdm import tqdm
 from typing import Optional
 import json
 from itertools import product
 from torch.utils.tensorboard import SummaryWriter
+import torch
 
 class SocialForcePredictor(BasePredictor):
-    def __init__(self, model: SocialForceModel, logdir_path: Optional[str] = None):
+    def __init__(
+        self, 
+        model: SocialForceModel, 
+        device: str | torch.device, 
+        dtype: torch.dtype = torch.float32, 
+        logdir_path: Optional[str] = None
+    ):
         super().__init__()
         self.model = model
+        self.device = device
+        self.dtype = dtype
         self.logdir_path = logdir_path
 
-    def train(
-        self, 
-        data: ..., 
-        param_grid: list[dict[str, float]],
-        save_path: Optional[str],
-        metric_type: str = "mae"
-    ) -> dict[str, float]:
-        best_loss = float('inf')
-        best_grid = None
-        writer = SummaryWriter(self.logdir_path) if self.logdir_path else None
+    def train():
+        pass
 
-        with tqdm(param_grid, desc="Computing the best grid...") as progress_bar:
-            for i, grid in enumerate(progress_bar):
-                model = SocialForceModel(self.model.fps, **grid)
-                preds_acc = model.predict(data)
-                loss = [
-                    self._compute_metric(
-                        lf.next_pos, 
-                        lf.cur_pos,
-                        lf.cur_vel,
-                        acc,
-                        lf.delta_time,
-                        metric_type=metric_type
-                    )
-                    for lf, acc in zip(data, preds_acc)
-                ]
+    # def train(
+    #     self, 
+    #     data: ..., 
+    #     param_grid: list[dict[str, float]],
+    #     save_path: Optional[str],
+    #     metric_type: str = "mae"
+    # ) -> dict[str, float]:
+    #     best_loss = float('inf')
+    #     best_grid = None
+    #     writer = SummaryWriter(self.logdir_path) if self.logdir_path else None
 
-                avg_loss = sum(loss) / len(loss)
+    #     with tqdm(param_grid, desc="Computing the best grid...") as progress_bar:
+    #         for i, grid in enumerate(progress_bar):
+    #             model = SocialForceModel(self.model.fps, **grid)
+    #             preds_acc = model.predict(data)
+    #             loss = [
+    #                 self._compute_metric(
+    #                     lf.next_pos, 
+    #                     lf.cur_pos,
+    #                     lf.cur_vel,
+    #                     acc,
+    #                     lf.delta_time,
+    #                     metric_type=metric_type
+    #                 )
+    #                 for lf, acc in zip(data, preds_acc)
+    #             ]
 
-                progress_bar.set_description(f"Grid: {grid}, Score: {avg_loss:.4f}")
-                if writer:
-                    writer.add_scalar("Grid Loss", avg_loss, i)
-                    writer.add_text(f"Grid {i}", f"Parameters: {json.dumps(grid)}\nLoss: {avg_loss:.4f}")
+    #             avg_loss = sum(loss) / len(loss)
 
-                if avg_loss < best_loss:
-                    best_loss = avg_loss
-                    best_grid = grid
+    #             progress_bar.set_description(f"Grid: {grid}, Score: {avg_loss:.4f}")
+    #             if writer:
+    #                 writer.add_scalar("Grid Loss", avg_loss, i)
+    #                 writer.add_text(f"Grid {i}", f"Parameters: {json.dumps(grid)}\nLoss: {avg_loss:.4f}")
 
-        if save_path:
-            with open(save_path, 'w') as f:
-                json.dump(best_grid, f, indent=4)
+    #             if avg_loss < best_loss:
+    #                 best_loss = avg_loss
+    #                 best_grid = grid
 
-        print(f"Best grid: {best_grid}, Best loss: {best_loss:.4f}")
+    #     if save_path:
+    #         with open(save_path, 'w') as f:
+    #             json.dump(best_grid, f, indent=4)
 
-        return grid
+    #     print(f"Best grid: {best_grid}, Best loss: {best_loss:.4f}")
 
-    @staticmethod
-    def _compute_metric(
-        next_pos: Point2D, 
-        cur_pos: Point2D,
-        cur_vel: Velocity, 
-        cur_acc: Acceleration,
-        delta_time: float,
-        metric_type: str ="mse"
-    ):
-        predicted_next_pos = cur_pos + cur_vel * delta_time + 0.5 * cur_acc * delta_time**2
-        error = ((predicted_next_pos.x - next_pos.x) ** 2 + (predicted_next_pos.y - next_pos.y) ** 2) ** 0.5
-        if metric_type == "mse":
-            return error**2
-        elif metric_type == "mae":
-            return error
-        else:
-            raise ValueError("Unknown metric type. Supported types are 'mse' and 'mae'.")
+    #     return grid
+
+    # @staticmethod
+    # def _compute_metric(
+    #     next_pos: Point2D, 
+    #     cur_pos: Point2D,
+    #     cur_vel: Velocity, 
+    #     cur_acc: Acceleration,
+    #     delta_time: float,
+    #     metric_type: str ="mse"
+    # ):
+    #     predicted_next_pos = cur_pos + cur_vel * delta_time + 0.5 * cur_acc * delta_time**2
+    #     error = ((predicted_next_pos.x - next_pos.x) ** 2 + (predicted_next_pos.y - next_pos.y) ** 2) ** 0.5
+    #     if metric_type == "mse":
+    #         return error**2
+    #     elif metric_type == "mae":
+    #         return error
+    #     else:
+    #         raise ValueError("Unknown metric type. Supported types are 'mse' and 'mae'.")
 
     @staticmethod
     def param_ranges_to_param_grid(param_ranges: dict[str, list[float]]) -> list[dict[str, float]]:
@@ -84,5 +98,21 @@ class SocialForcePredictor(BasePredictor):
             for values in product(*param_ranges.values())
         ]
 
-    def predict(self, features: ...) -> list[Acceleration]:
-        return self.model.predict(features)
+    def predict(self, frame: Frame) -> dict[int, Acceleration]:
+        person_ids = list(frame.persons.keys())
+        if len(person_ids) == 0:
+            return {}
+
+        frames = [Frames({frame.number: frame})] * len(person_ids)
+        batched_frame = BatchedFrames(
+            frames,
+            person_ids,
+            self.device,
+            dtype=self.dtype
+        )
+        preds_acc = self.model.predict(batched_frame, as_numpy=True)
+        preds_acc = {
+            person_id: Acceleration(x=pred_acc[0], y=pred_acc[1]) 
+            for pred_acc, person_id in zip(preds_acc, person_ids)
+        }
+        return preds_acc

@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torchmetrics
 from models.base_predictor import BasePredictor
 from entities.vector2d import Acceleration, Point2D

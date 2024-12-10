@@ -31,18 +31,28 @@ class NeuralNetModel(TrainableModule):
     def forward_single(
         self, 
         x_individual: torch.Tensor, 
-        x_interaction: torch.Tensor,
-        x_obstacle: torch.Tensor
+        interaction_features: tuple[torch.Tensor, torch.Tensor],
+        obstacle_features: tuple[torch.Tensor, torch.Tensor],
     ) -> torch.Tensor:
         # x_individual.shape: [batch_size, individual_fts_dim] 
         # x_interaction.shape: [batch_size, l, interaction_fts_dim]
         # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
-        x_interaction = self._process_feature(x_interaction, self.fc_interaction)
-        x_obstacle = self._process_feature(x_obstacle, self.fc_obstacle)
+        x_interaction, interaction_mask = interaction_features
+        x_obstacle, obstacle_mask = obstacle_features
+        x_interaction = self._process_feature(x_interaction, self.fc_interaction, interaction_mask)
+        x_obstacle = self._process_feature(x_obstacle, self.fc_obstacle, obstacle_mask)
         combined_features = torch.cat([x_individual, x_interaction, x_obstacle], dim=-1)
         output = self.fcs_combined(combined_features)
         output = self.output_layer(output)
         return output
+
+    def _process_feature(self, x: torch.Tensor, layer: nn.Linear, mask: torch.Tensor) -> torch.Tensor:
+        if x.numel() > 0:
+            x = F.relu(layer(x))
+            x = x * mask.unsqueeze(-1)
+            return torch.sum(x, dim=1)
+        else:
+            return torch.zeros(x.shape[0], layer.out_features, device=self.device)
 
     def forward(self, batched_frames: BatchedFrames, delta_times: torch.Tensor) -> torch.Tensor:
         for _ in range(batched_frames.steps_count):
@@ -110,10 +120,3 @@ class NeuralNetModel(TrainableModule):
             layers.append(nn.Linear(input_dim if i == 0 else hidden_dims[i - 1], hidden_dim))
             layers.append(nn.ReLU())
         return nn.Sequential(*layers)
-
-    def _process_feature(self, x: torch.Tensor, layer: nn.Linear) -> torch.Tensor:
-        if x.numel() > 0:
-            x = F.relu(layer(x))
-            return torch.sum(x, dim=1)
-        else:
-            return torch.zeros(x.shape[0], layer.out_features, device=self.device)
