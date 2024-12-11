@@ -1,4 +1,5 @@
 import torch
+import os
 import numpy as np
 import torchmetrics
 from models.base_predictor import BasePredictor
@@ -34,7 +35,7 @@ class NeuralNetPredictor(BasePredictor):
         pred_steps: int,
         learning_rate: float,
         epochs: int,
-        save_path: Optional[str],
+        save_model: bool = True,
         loss: str = "mse"
     ) -> None:
         if loss != "mse":
@@ -54,9 +55,15 @@ class NeuralNetPredictor(BasePredictor):
             loss=torch.nn.MSELoss()
         )
 
-        logs = self.model.fit(train_loader, dev=eval_loader, epochs=epochs, callbacks=[])
-        if save_path:
-            self.model.save_weights(save_path)
+        def save_model_func(self: NeuralNetModel, epoch: int, logs: dict[str, torch.Tensor]) -> None:
+            self.save_weights(os.path.join(self.logdir, f'net_weights_epoch{epoch}.pth'))
+            
+        logs = self.model.fit(
+            train_loader, 
+            dev=eval_loader, 
+            epochs=epochs, 
+            callbacks=[save_model_func] if save_model else []
+        )
 
     def predict(self, frame: Frame) -> dict[int, Acceleration]:
         mock_scene = Scene(
