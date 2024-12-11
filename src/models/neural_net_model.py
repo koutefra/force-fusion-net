@@ -84,7 +84,7 @@ class NeuralNetModel(TrainableModule):
     def predict_step(self, xs, as_numpy=True):
         """An overridable method performing a single prediction step."""
         with torch.no_grad():
-            batched_frames = xs[0]
+            batched_frames = xs
             features = batched_frames.compute_all_features()
             batch = self.forward_single(*features)
             if type(batch) is list:

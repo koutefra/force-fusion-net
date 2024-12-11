@@ -30,7 +30,7 @@ class BatchedFrames:
     def initialize_frames(self, frames: list[list[Frame]], person_ids: list[int]):
         frames_by_step = self.organize_frames_by_step(frames)
         self.person_positions, self.person_velocities, self.person_goals = self.batch_focus_persons(frames_by_step[0], person_ids)
-        self.gt_next_positions = self.extract_gt_positions(frames_by_step[1:], person_ids)
+        self.gt_next_positions = self.extract_gt_positions(frames_by_step[1:], person_ids) if self.steps_count > 0 else None
         self.other_positions_by_step, self.other_velocities_by_step, self.other_mask_by_step, self.obstacles_by_step, self.obstacle_mask_by_step = self.batch_all_steps(frames_by_step, person_ids)
 
     def organize_frames_by_step(self, frames: list[list[Frame]]) -> list[list[Frame]]:
