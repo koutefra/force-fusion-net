@@ -31,7 +31,7 @@ class NeuralNetPredictor(BasePredictor):
         self,
         train_data: Scenes,
         val_data: Scenes,
-        max_pred_steps: int,
+        pred_steps: int,
         learning_rate: float,
         epochs: int,
         save_path: Optional[str],
@@ -40,8 +40,8 @@ class NeuralNetPredictor(BasePredictor):
         if loss != "mse":
             raise ValueError(f"Loss {loss} not supported")
 
-        train_dataset = TorchSceneDataset(train_data, max_pred_steps, device=self.device, dtype=self.dtype) 
-        eval_dataset = TorchSceneDataset(val_data, max_pred_steps, device=self.device, dtype=self.dtype) 
+        train_dataset = TorchSceneDataset(train_data, pred_steps, device=self.device, dtype=self.dtype) 
+        eval_dataset = TorchSceneDataset(val_data, pred_steps, device=self.device, dtype=self.dtype) 
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, collate_fn=train_dataset.prepare_batch)
         eval_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=self.batch_size, collate_fn=eval_dataset.prepare_batch)
@@ -65,7 +65,7 @@ class NeuralNetPredictor(BasePredictor):
             bounding_box=(Point2D.zero, Point2D.zero),
             fps=float('nan')
         )
-        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), max_pred_steps=0, device=self.device, dtype=self.dtype, inference=True) 
+        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), pred_steps=0, device=self.device, dtype=self.dtype) 
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, collate_fn=dataset.prepare_batch)
         preds_acc = self.model.predict(loader, as_numpy=True)
         preds_acc = {

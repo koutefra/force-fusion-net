@@ -68,7 +68,8 @@ def main(args: argparse.Namespace) -> None:
             individual_features_dim,
             interaction_features_dim,
             obstacle_features_dim,
-            config['hidden_dims']
+            config['hidden_dims'],
+            config['dropout']
         )
         predictor = NeuralNetPredictor(
             model=model,
@@ -79,7 +80,7 @@ def main(args: argparse.Namespace) -> None:
         predictor.train(
             train_dataset.scenes,
             val_dataset.scenes,
-            max_pred_steps=config['max_pred_steps'],
+            pred_steps=config['pred_steps'],
             learning_rate=float(config['learning_rate']),
             epochs=config['epochs'],
             save_path=os.path.join(args.logdir, 'neural_net_weights.pth')

@@ -11,7 +11,8 @@ class NeuralNetModel(TrainableModule):
         individual_fts_dim: int, 
         interaction_fts_dim: int, 
         obstacle_fts_dim: int, 
-        hidden_dims: list[int] 
+        hidden_dims: list[int],
+        dropout: float
     ):
         super(NeuralNetModel, self).__init__()
         self.individual_fts_dim = individual_fts_dim
@@ -25,7 +26,7 @@ class NeuralNetModel(TrainableModule):
 
         # make for hidden_dims of fcs
         combined_input_dim = individual_fts_dim + 2 * hidden_dims[1]
-        self.fcs_combined = self._build_mlp(combined_input_dim, hidden_dims[1:])
+        self.fcs_combined = self._build_mlp(combined_input_dim, hidden_dims[1:], dropout)
         self.output_layer = nn.Linear(hidden_dims[-1], self.output_dim)
 
     def forward_single(
@@ -119,9 +120,10 @@ class NeuralNetModel(TrainableModule):
         return model
 
     @staticmethod
-    def _build_mlp(input_dim: int, hidden_dims: list[int]) -> nn.Sequential:
+    def _build_mlp(input_dim: int, hidden_dims: list[int], dropout: float) -> nn.Sequential:
         layers = []
         for i, hidden_dim in enumerate(hidden_dims):
             layers.append(nn.Linear(input_dim if i == 0 else hidden_dims[i - 1], hidden_dim))
+            layers.append(nn.Dropout(dropout))
             layers.append(nn.ReLU())
         return nn.Sequential(*layers)
