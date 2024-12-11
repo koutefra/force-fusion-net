@@ -74,6 +74,7 @@ class TrainableModule(torch.nn.Module):
                 logs = self.train_step(xs, ys)
                 message = [epoch_message] + [f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()]
                 data_and_progress.set_description(" ".join(message), refresh=False)
+                break
             if dev is not None:
                 logs |= {"dev_" + k: v for k, v in self.evaluate(dev, verbose=0).items()}
             for callback in callbacks:
@@ -120,6 +121,7 @@ class TrainableModule(torch.nn.Module):
         self.metrics.reset()
         for xs, ys in dataloader:
             logs = self.test_step(xs, ys)
+            break
         verbose and print("Evaluation", *[f"{k}={v:#.{0<abs(v)<2e-4 and '3g' or '4f'}}" for k, v in logs.items()])
         return logs
 

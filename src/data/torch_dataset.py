@@ -46,4 +46,7 @@ class TorchSceneDataset(torch.utils.data.Dataset):
     def prepare_batch(self, data: list[tuple[list[Frame], int, int]]) -> tuple[BatchedFrames, torch.Tensor]:
         frames, person_ids, delta_times = zip(*data)
         batched_frames = BatchedFrames(frames, person_ids, delta_times, self.device, dtype=self.dtype)
-        return batched_frames, batched_frames.get_gt_next_positions()
+        ground_truths = batched_frames.get_gt_next_positions()
+        if not ground_truths.is_contiguous():
+            ground_truths = ground_truths.contiguous()
+        return batched_frames, ground_truths

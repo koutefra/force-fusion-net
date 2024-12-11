@@ -82,8 +82,7 @@ def main(args: argparse.Namespace) -> None:
             val_dataset.scenes,
             pred_steps=config['pred_steps'],
             learning_rate=float(config['learning_rate']),
-            epochs=config['epochs'],
-            save_path=os.path.join(args.logdir, 'neural_net_weights.pth')
+            epochs=config['epochs']
         )
     elif config['model_type'] == 'social_force':
         model = SocialForceModel(config['dataset_fps'])

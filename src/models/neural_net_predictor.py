@@ -60,8 +60,8 @@ class NeuralNetPredictor(BasePredictor):
             
         logs = self.model.fit(
             train_loader, 
-            dev=eval_loader, 
             epochs=epochs, 
+            dev=eval_loader, 
             callbacks=[save_model_func] if save_model else []
         )
 
