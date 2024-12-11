@@ -93,7 +93,7 @@ class NeuralNetModel(TrainableModule):
             return batch.numpy(force=True) if as_numpy else batch
 
     @staticmethod
-    def from_weight_file(path: str, device: str | torch.device = "cpu") -> "NeuralNetModel":
+    def from_weight_file(path: str, device: str | torch.device = "cpu", dropout_rate: float = 0.5) -> "NeuralNetModel":
         state_dict = torch.load(path, map_location=device)
         individual_fts_dim = state_dict['fcs_combined.0.weight'].size(1) - state_dict['fc_interaction.weight'].size(0) - state_dict['fc_obstacle.weight'].size(0)
         interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)
@@ -103,16 +103,17 @@ class NeuralNetModel(TrainableModule):
         
         current_dim = state_dict['fcs_combined.0.weight'].size(0)
         hidden_dims.append(current_dim)
-        layer_index = 2
+        layer_index = 3
         while f'fcs_combined.{layer_index}.weight' in state_dict:
             hidden_dims.append(state_dict[f'fcs_combined.{layer_index}.weight'].size(0))
-            layer_index += 2  # Skipping over activation layers
+            layer_index += 3  # Adjusted to skip dropout and activation layers
 
         model = NeuralNetModel(
             individual_fts_dim=individual_fts_dim,
             interaction_fts_dim=interaction_fts_dim,
             obstacle_fts_dim=obstacle_fts_dim,
-            hidden_dims=hidden_dims
+            hidden_dims=hidden_dims,
+            dropout=dropout_rate 
         )
 
         # Load weights
@@ -124,6 +125,6 @@ class NeuralNetModel(TrainableModule):
         layers = []
         for i, hidden_dim in enumerate(hidden_dims):
             layers.append(nn.Linear(input_dim if i == 0 else hidden_dims[i - 1], hidden_dim))
-            layers.append(nn.Dropout(dropout))
             layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))
         return nn.Sequential(*layers)
