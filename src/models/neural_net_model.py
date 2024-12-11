@@ -93,7 +93,7 @@ class NeuralNetModel(TrainableModule):
             return batch.numpy(force=True) if as_numpy else batch
 
     @staticmethod
-    def from_weight_file(path: str, device: str | torch.device = "cpu", dropout_rate: float = 0.5) -> "NeuralNetModel":
+    def from_weight_file(path: str, device: str | torch.device = "cpu", dropout_rate: float = 0.0) -> "NeuralNetModel":
         state_dict = torch.load(path, map_location=device)
         individual_fts_dim = state_dict['fcs_combined.0.weight'].size(1) - state_dict['fc_interaction.weight'].size(0) - state_dict['fc_obstacle.weight'].size(0)
         interaction_fts_dim = state_dict['fc_interaction.weight'].size(1)

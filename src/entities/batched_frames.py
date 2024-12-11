@@ -46,13 +46,16 @@ class BatchedFrames:
             torch.tensor(person_goals, device=self.device, dtype=self.dtype)
         )
 
-    def extract_gt_positions(self, subsequent_frames: list[Frame], person_ids: list[int]) -> torch.Tensor:
+    def extract_gt_positions(self, subsequent_frames: list[list[Frame]], person_ids: list[int]) -> torch.Tensor:
         batch_size = len(person_ids)
-        return torch.stack([
-            f.persons[pid].position.to_tensor(device=self.device, dtype=self.dtype) 
-            for step_frames in subsequent_frames 
-            for f, pid in zip(step_frames, person_ids)
-        ]).reshape(batch_size, -1, 2)
+        gt = np.array([
+            np.array([
+                f.persons[pid].position.to_numpy()
+                for f, pid in zip(step_frames, person_ids)
+            ]) for step_frames in subsequent_frames 
+        ])
+        gt = np.transpose(gt, (1, 0, 2))
+        return torch.tensor(gt, device=self.device, dtype=self.dtype)
 
     def update(self, new_person_positions: torch.Tensor, new_person_velocities: torch.Tensor) -> None:
         self.person_positions = new_person_positions

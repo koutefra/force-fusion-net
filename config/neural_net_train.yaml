@@ -1,9 +1,10 @@
 model_type: neural_net
 batch_size: 64
-epochs: 1
+epochs: 3
 learning_rate: 1e-3
-hidden_dims: [256, 256, 256]
-max_pred_steps: 10
+hidden_dims: [1024, 1024, 1024, 512]
+dropout: 0.0
+pred_steps: 5
 
 dataset: juelich
 data_folder_path: "./data/datasets/juelich/bottleneck"
