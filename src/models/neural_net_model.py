@@ -54,18 +54,23 @@ class NeuralNetModel(TrainableModule):
         else:
             return torch.zeros(x.shape[0], layer.out_features, device=self.device)
 
-    def forward(self, batched_frames: BatchedFrames, delta_times: torch.Tensor) -> torch.Tensor:
-        for _ in range(batched_frames.steps_count):
+    def forward(self, batched_frames: BatchedFrames) -> torch.Tensor:
+        pred_next_pos_all_steps = []
+        for step in range(batched_frames.steps_count):
             features = batched_frames.compute_all_features()
             pred_accs = self.forward_single(*features)
             new_pos, new_vel = self.apply_predictions(
                 cur_positions=batched_frames.person_positions,
                 cur_velocities=batched_frames.person_velocities,
-                delta_times=delta_times,
+                delta_times=batched_frames.get_delta_times(),
                 pred_accs=pred_accs
             )
-            batched_frames.update(new_pos, new_vel)
-        return new_pos
+            pred_next_pos_all_steps.append(new_pos)
+
+            if step != batched_frames.steps_count - 1:  # not last step
+                batched_frames.update(new_pos, new_vel)
+
+        return torch.stack(pred_next_pos_all_steps, dim=1)
 
     def apply_predictions(self, cur_positions, cur_velocities, delta_times, pred_accs) -> tuple[torch.Tensor, torch.Tensor]:
         next_pos_predicted, next_vel_predicted = kinematic_equation(

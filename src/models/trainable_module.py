@@ -89,8 +89,8 @@ class TrainableModule(torch.nn.Module):
 
         A dictionary with the loss and metrics should be returned."""
         self.zero_grad()
-        y_pred = self.forward(*xs)
-        loss = self.compute_loss(y_pred, ys, *xs)
+        y_pred = self.forward(xs)
+        loss = self.compute_loss(y_pred, ys, xs)
         loss.backward()
         with torch.no_grad():
             self.optimizer.step()
@@ -98,13 +98,13 @@ class TrainableModule(torch.nn.Module):
             self.loss_metric.update(loss)
             return {"loss": self.loss_metric.compute()} \
                 | ({"lr": self.schedule.get_last_lr()[0]} if self.schedule else {}) \
-                | self.compute_metrics(y_pred, ys, *xs, training=True)
+                | self.compute_metrics(y_pred, ys, xs, training=True)
 
-    def compute_loss(self, y_pred, y, *xs):
+    def compute_loss(self, y_pred, y, xs):
         """Compute the loss of the model given the inputs, predictions, and target outputs."""
         return self.loss(y_pred, y)
 
-    def compute_metrics(self, y_pred, y, *xs, training):
+    def compute_metrics(self, y_pred, y, xs, training):
         """Compute and return metrics given the inputs, predictions, and target outputs."""
         self.metrics.update(y_pred, y)
         return self.metrics.compute()
@@ -128,9 +128,9 @@ class TrainableModule(torch.nn.Module):
 
         A dictionary with the loss and metrics should be returned."""
         with torch.no_grad():
-            y_pred = self.forward(*xs)
-            self.loss_metric.update(self.compute_loss(y_pred, ys, *xs))
-            return {"loss": self.loss_metric.compute()} | self.compute_metrics(y_pred, ys, *xs, training=False)
+            y_pred = self.forward(xs)
+            self.loss_metric.update(self.compute_loss(y_pred, ys, xs))
+            return {"loss": self.loss_metric.compute()} | self.compute_metrics(y_pred, ys, xs, training=False)
 
     def predict(self, dataloader, as_numpy=True):
         """Compute predictions for the given dataset.

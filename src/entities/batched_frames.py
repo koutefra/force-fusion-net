@@ -1,82 +1,84 @@
 import torch
-from itertools import islice
-from entities.frame import Frames, Frame
+from entities.frame import Frame
 import numpy as np
 
 class BatchedFrames:
     def __init__(
         self, 
-        frames: list[Frames], 
+        frames: list[list[Frame]], 
         person_ids: list[int], 
+        delta_times: list[float],
         device: torch.device, 
         epsilon: float = 1e-8,
         dtype: torch.dtype = torch.float32
     ):
-        if len(frames) != len(person_ids):
-            raise ValueError("Person ids must match to the frames.")
-        if len(frames) == 0:
-            raise ValueError("No data.")
-
+        self.validate_inputs(frames, person_ids)
         self.device = device
         self.epsilon = epsilon
         self.dtype = dtype
-        self.steps_count = len(frames[0])
-        frames_by_step = [
-            [next(islice(fs.values(), step, step + 1)) for fs in frames]
-            for step in range(self.steps_count)
-        ]
+        self.steps_count = len(frames[0]) - 1  # - 1 for the last frame
+        self.step = 0
+        self.delta_times = torch.tensor(delta_times, device=self.device, dtype=self.dtype)
+        self.initialize_frames(frames, person_ids)
 
-        self.person_positions, self.person_velocities, self.person_goals = self.batch_focus_persons(
-            frames_by_step[0], 
-            person_ids,
-            device,
-            dtype
+    def validate_inputs(self, frames: list[list[Frame]], person_ids: list[int]):
+        if len(frames) != len(person_ids):
+            raise ValueError("Person ids must match the number of frames.")
+        if not frames:
+            raise ValueError("No data provided.")
+
+    def initialize_frames(self, frames: list[list[Frame]], person_ids: list[int]):
+        frames_by_step = self.organize_frames_by_step(frames)
+        self.person_positions, self.person_velocities, self.person_goals = self.batch_focus_persons(frames_by_step[0], person_ids)
+        self.gt_next_positions = self.extract_gt_positions(frames_by_step[1:], person_ids)
+        self.other_positions_by_step, self.other_velocities_by_step, self.other_mask_by_step, self.obstacles_by_step, self.obstacle_mask_by_step = self.batch_all_steps(frames_by_step, person_ids)
+
+    def organize_frames_by_step(self, frames: list[list[Frame]]) -> list[list[Frame]]:
+        return [[fs[step] for fs in frames] for step in range(self.steps_count + 1)]  # + 1 for the last frame
+
+    def batch_focus_persons(self, initial_frames: list[Frame], person_ids: list[int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        person_positions = np.array([f.persons[pid].position.to_numpy() for f, pid in zip(initial_frames, person_ids)])
+        person_velocities = np.array([f.persons[pid].velocity.to_numpy() for f, pid in zip(initial_frames, person_ids)])
+        person_goals = np.array([f.persons[pid].goal.to_numpy() for f, pid in zip(initial_frames, person_ids)])
+        return (
+            torch.tensor(person_positions, device=self.device, dtype=self.dtype),
+            torch.tensor(person_velocities, device=self.device, dtype=self.dtype),
+            torch.tensor(person_goals, device=self.device, dtype=self.dtype)
         )
 
-        self.other_positions_by_step = []
-        self.other_velocities_by_step = []
-        self.other_mask_by_step = []
-        self.obstacles_by_step = []
-        self.obstacle_mask_by_step = []
-        for frames in frames_by_step:
-            other_positions, other_velocities, other_mask = self.batch_other_persons(frames, person_ids, device, dtype)
-            obstacles, obstacle_mask = self.batch_obstacles(frames, device, dtype)
-            self.other_positions_by_step.append(other_positions)
-            self.other_velocities_by_step.append(other_velocities)
-            self.other_mask_by_step.append(other_mask)
-            self.obstacles_by_step.append(obstacles)
-            self.obstacle_mask_by_step.append(obstacle_mask)
-
-        self.step = 0
+    def extract_gt_positions(self, subsequent_frames: list[Frame], person_ids: list[int]) -> torch.Tensor:
+        batch_size = len(person_ids)
+        return torch.stack([
+            f.persons[pid].position.to_tensor(device=self.device, dtype=self.dtype) 
+            for step_frames in subsequent_frames 
+            for f, pid in zip(step_frames, person_ids)
+        ]).reshape(batch_size, -1, 2)
 
     def update(self, new_person_positions: torch.Tensor, new_person_velocities: torch.Tensor) -> None:
         self.person_positions = new_person_positions
         self.person_velocities = new_person_velocities
         self.step = self.step + 1
 
-    @staticmethod
-    def batch_focus_persons(
-        frames: list[Frame], 
-        person_ids: list[int],
-        device: torch.device,
-        dtype: torch.dtype
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        person_positions = np.array([frame.persons[pid].position.to_numpy() for frame, pid in zip(frames, person_ids)])
-        person_velocities = np.array([frame.persons[pid].velocity.to_numpy() for frame, pid in zip(frames, person_ids)])
-        person_goals = np.array([frame.persons[pid].goal.to_numpy() for frame, pid in zip(frames, person_ids)])
-        return (
-            torch.tensor(person_positions, dtype=dtype, device=device),
-            torch.tensor(person_velocities, dtype=dtype, device=device),
-            torch.tensor(person_goals, dtype=dtype, device=device)
-        )
+        if self.step >= self.steps_count:
+            raise ValueError("No more steps to update.")
 
-    @staticmethod
-    def batch_other_persons(
-        frames: list[Frame], 
-        person_ids: list[int], 
-        device: torch.device,
-        dtype: torch.dtype
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def batch_all_steps(self, frames_by_step: list[list[Frame]], person_ids: list[int]):
+        other_positions_by_step = []
+        other_velocities_by_step = []
+        other_mask_by_step = []
+        obstacles_by_step = []
+        obstacle_mask_by_step = []
+        for step_frames in frames_by_step:
+            other_positions, other_velocities, other_mask = self.batch_other_persons(step_frames, person_ids)
+            obstacles, obstacle_mask = self.batch_obstacles(step_frames)
+            other_positions_by_step.append(other_positions)
+            other_velocities_by_step.append(other_velocities)
+            other_mask_by_step.append(other_mask)
+            obstacles_by_step.append(obstacles)
+            obstacle_mask_by_step.append(obstacle_mask)
+        return other_positions_by_step, other_velocities_by_step, other_mask_by_step, obstacles_by_step, obstacle_mask_by_step
+
+    def batch_other_persons(self, frames: list[Frame], person_ids: list[int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         max_others = max(1, max(len(frame.persons) - 1 for frame in frames))
         other_positions_all = []
         other_velocities_all = []
@@ -104,17 +106,12 @@ class BatchedFrames:
             mask_all.append(mask)
 
         return (
-            torch.tensor(np.array(other_positions_all), dtype=dtype, device=device),
-            torch.tensor(np.array(other_velocities_all), dtype=dtype, device=device),
-            torch.tensor(np.array(mask_all), dtype=torch.bool, device=device)
+            torch.tensor(np.array(other_positions_all), dtype=self.dtype, device=self.device),
+            torch.tensor(np.array(other_velocities_all), dtype=self.dtype, device=self.device),
+            torch.tensor(np.array(mask_all), dtype=torch.bool, device=self.device)
         )
 
-    @staticmethod
-    def batch_obstacles(
-        frames: list[Frame], 
-        device: torch.device,
-        dtype: torch.dtype
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def batch_obstacles(self, frames: list[Frame]) -> tuple[torch.Tensor, torch.Tensor]:
         max_obstacles = max(1, max(len(frame.obstacles) for frame in frames))
         obstacle_positions_all = []
         mask_all = []
@@ -140,8 +137,8 @@ class BatchedFrames:
             obstacle_positions_all.append(obstacle_positions)
             mask_all.append(mask)
         return (
-            torch.tensor(np.array(obstacle_positions_all), dtype=dtype, device=device),
-            torch.tensor(np.array(mask_all), dtype=torch.bool, device=device)
+            torch.tensor(np.array(obstacle_positions_all), dtype=self.dtype, device=self.device),
+            torch.tensor(np.array(mask_all), dtype=torch.bool, device=self.device)
         )
 
     @staticmethod
@@ -275,3 +272,9 @@ class BatchedFrames:
         interaction = (interaction_features, self.other_mask_by_step[self.step])
         obstacle = (obstacle_features, self.obstacle_mask_by_step[self.step])
         return individual_features, interaction, obstacle
+
+    def get_gt_next_positions(self) -> torch.Tensor:
+        return self.gt_next_positions
+
+    def get_delta_times(self) -> torch.Tensor:
+        return self.delta_times
