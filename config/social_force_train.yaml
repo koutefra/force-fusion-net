@@ -1,7 +1,7 @@
 model_type: social_force
 batch_size: 64
-epochs: 10
-learning_rate: 1e-3
+epochs: 3
+learning_rate: 1e-2
 pred_steps: 10
 
 weights:
@@ -12,7 +12,7 @@ weights:
     A_obstacle: 5.0
     B_obstacle: 0.2
     tau: 0.5
-    desired_speed: 1.2
+    desired_speed: 0.7
 
 dataset: juelich
 data_folder_path: "./data/datasets/juelich/bottleneck"

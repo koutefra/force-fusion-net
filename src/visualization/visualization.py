@@ -1,4 +1,5 @@
 import pygame
+import re
 import os
 import shutil
 import imageio
@@ -219,7 +220,15 @@ class Visualizer:
 
     def _create_mp4(self, scene_id: str, duration: float = 0.1, desc: Optional[str] = None) -> None:
         frames_dir = os.path.join(self.output_dir, 'frames')
-        frame_files = sorted([os.path.join(frames_dir, f) for f in os.listdir(frames_dir) if f.endswith('.png')])
+
+        def numerical_sort(value: str):
+            parts = re.compile(r'(\d+)').findall(value)
+            return int(parts[0]) if parts else value
+
+        frame_files = sorted(
+            [os.path.join(frames_dir, f) for f in os.listdir(frames_dir) if f.endswith('.png')],
+            key=numerical_sort
+        )
         frames = [imageio.imread(frame) for frame in frame_files]
         mp4_filename = os.path.join(self.output_dir, f"scene_{scene_id}" + (f"_{desc}" if desc else "") + "_animation.mp4")
 
@@ -232,14 +241,6 @@ class Visualizer:
         # Clean up the frames directory
         shutil.rmtree(os.path.join(self.output_dir, 'frames'))
         print(f"MP4 saved as {mp4_filename}")
-
-    def _create_gif(self, scene_id: str, duration: float = 0.1, desc: Optional[str] = None) -> None:
-        frame_files = sorted([os.path.join(self.output_dir, f) for f in os.listdir(self.output_dir) if f.endswith('.png')])
-        frames = [imageio.imread(frame) for frame in frame_files]
-        gif_filename = f"scene_{scene_id}" + f"_{desc}" if desc else "" + "_animation.gif"
-        imageio.mimsave(gif_filename, frames, duration=duration)
-        shutil.rmtree(os.path.join(self.output_dir, '/frames'))
-        print(f"GIF saved as {gif_filename}")
 
     def visualize(
         self, 

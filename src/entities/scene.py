@@ -39,9 +39,11 @@ class Scene:
         resulting_frames = [first_frame.filter_invalid_persons().remove_persons(person_ids if person_ids else [])]
         delta_time = self.frame_step / self.fps
         finished_person_ids = set(person_ids or [])
-        for step in tqdm(range(first_frame_number, first_frame_number + total_steps * self.frame_step, self.frame_step), desc="Computing the simulation..."):
+        for step in tqdm(
+            range(first_frame_number, first_frame_number + total_steps * self.frame_step, self.frame_step), 
+            desc="Computing the simulation..."
+        ):
             frame = resulting_frames[-1]
-            resulting_frames.append(frame)
             acc_pred = predict_acc_func(frame)
             frame = frame.set_accelerations(acc_pred)
             resulting_frames[-1] = frame  # resave the currect frame enriched with the accelerations
@@ -61,6 +63,16 @@ class Scene:
         return Scene(
             id=self.id,
             frames={first_frame_number + i * self.frame_step: frame for frame, i in zip(resulting_frames, range(len(resulting_frames)))},
+            bounding_box=self.bounding_box,
+            fps=self.fps,
+            frame_step=self.frame_step,
+            tag=self.tag
+        )
+
+    def take_first_n_frames(self, n: int) -> "Scene":
+        return Scene(
+            id=self.id,
+            frames=self.frames.take_first_n(n),
             bounding_box=self.bounding_box,
             fps=self.fps,
             frame_step=self.frame_step,

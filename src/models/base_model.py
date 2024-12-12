@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from entities.vector2d import kinematic_equation
 from entities.batched_frames import BatchedFrames
 from models.trainable_module import TrainableModule
@@ -50,6 +52,24 @@ class BaseModel(TrainableModule, ABC):
             if type(batch) is list:
                 batch = torch.stack(batch)
             return batch.numpy(force=True) if as_numpy else batch
+
+    def _process_feature(self, x: torch.Tensor, layer: nn.Linear, mask: torch.Tensor) -> torch.Tensor:
+        if x.numel() > 0:
+            x = F.relu(layer(x))
+            x = x * mask.unsqueeze(-1)
+            return torch.sum(x, dim=1)
+        else:
+            return torch.zeros(x.shape[0], layer.out_features, device=self.device)
+
+    @staticmethod
+    def _build_mlp(input_dim: int, hidden_dims: list[int], dropout: float) -> nn.Sequential:
+        layers = []
+        for i, hidden_dim in enumerate(hidden_dims):
+            layers.append(nn.Linear(input_dim if i == 0 else hidden_dims[i - 1], hidden_dim))
+            layers.append(nn.ReLU())
+            if i != len(hidden_dims) - 1:
+                layers.append(nn.Dropout(dropout))
+        return nn.Sequential(*layers)
 
     @staticmethod
     @abstractmethod

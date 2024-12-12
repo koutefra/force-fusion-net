@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from data.scene_dataset import SceneDataset
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader
-from models.neural_net_model import NeuralNetModel
+from models.direct_net import NeuralNetModel
 from models.predictor import Predictor
-from models.social_force_model import SocialForceModel
+from models.social_force import SocialForceModel
 from data.fdm_calculator import FiniteDifferenceCalculator
 import yaml
 from pathlib import Path

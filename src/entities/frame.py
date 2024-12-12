@@ -4,6 +4,7 @@ from entities.obstacle import LineObstacle
 from collections import OrderedDict, defaultdict
 from typing import Callable
 from entities.vector2d import Point2D, Velocity, Acceleration, closest_point_on_line
+from itertools import islice
 
 @dataclass(frozen=True)
 class Frame:
@@ -147,10 +148,10 @@ class Frames(OrderedDict[int, Frame]):
         pos_scale: Callable[[Point2D], Point2D] = lambda f: f, 
         vel_scale: Callable[[Velocity], Velocity] = lambda v: v, 
         acc_scale: Callable[[Acceleration], Acceleration] = lambda a: a) -> "Frames":
-        return OrderedDict({
+        return Frames(OrderedDict({
             frame_number: frame.normalized(pos_scale, vel_scale, acc_scale)
             for frame_number, frame in self.items()
-        })
+        }))
 
     def filter_by_person(self, person_id: int) -> "Trajectory":
         filtered_records = OrderedDict(
@@ -166,6 +167,9 @@ class Frames(OrderedDict[int, Frame]):
             for person_id in person_ids
         }
         return Trajectories(filtered_trajectories)
+
+    def take_first_n(self, n: int) -> "Frames":
+        return Frames(OrderedDict(islice(self.items(), n)))
 
     @classmethod
     def from_trajectories(cls, trajectories: "Trajectories", obstacles: dict[int, LineObstacle]) -> "Frames":

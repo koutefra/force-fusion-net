@@ -4,7 +4,7 @@ import torch.nn as nn
 from models.base_model import BaseModel
 from entities.batched_frames import BatchedFrames
 
-class SocialForceModel(BaseModel):
+class SocialForce(BaseModel):
     def __init__(
         self, 
         A_interaction: float = 2.0,  # Interaction force constant, (m/s^(-2)) 
@@ -14,7 +14,7 @@ class SocialForceModel(BaseModel):
         tau: float = 0.3,  # Relaxation time constant, s
         desired_speed: float = 1.2,  # m/s
     ):
-        super(SocialForceModel, self).__init__()
+        super(SocialForce, self).__init__()
         self.A_interaction = nn.Parameter(torch.tensor(A_interaction))
         self.A_obstacle = nn.Parameter(torch.tensor(A_obstacle))
         self.B_interaction = nn.Parameter(torch.tensor(B_interaction))
@@ -89,10 +89,10 @@ class SocialForceModel(BaseModel):
         return torch.stack((total_force_x, total_force_y), dim=-1)
 
     @staticmethod
-    def from_weight_file(path: str, device: str | torch.device = "cpu") -> "SocialForceModel":
+    def from_weight_file(path: str, device: str | torch.device = "cpu") -> "SocialForce":
         with open(path, "r") as file:
             param_grid = json.load(file)
-        model = SocialForceModel(**param_grid)
+        model = SocialForce(**param_grid)
         model.to(device)
         return model
 

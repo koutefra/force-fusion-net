@@ -1,11 +1,12 @@
 import argparse
 import numpy as np
 from data.scene_dataset import SceneDataset
+from entities.scene import Scene
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
 from data.fdm_calculator import FiniteDifferenceCalculator
 from visualization.visualization import Visualizer
-from models.neural_net_model import NeuralNetModel
-from models.social_force_model import SocialForceModel
+from models.direct_net import DirectNet
+from models.social_force import SocialForce
 from models.predictor import Predictor
 import random
 
@@ -43,12 +44,13 @@ def main(args: argparse.Namespace) -> None:
     if args.predictor_path:
         if args.predictor_type != 'gt':
             if args.predictor_type == 'neural_net':
-                model = NeuralNetModel.from_weight_file(args.predictor_path)
+                model = DirectNet.from_weight_file(args.predictor_path)
             elif args.predictor_type == 'social_force':
-                model = SocialForceModel.from_weight_file(args.predictor_path)
+                model = SocialForce.from_weight_file(args.predictor_path)
+            else:
+                raise ValueError(f"Unknown predictor type: {args.predictor_type}")
+
             predictor = Predictor(model, device=args.device)
-        else:
-            raise ValueError(f"Unknown predictor type: {args.predictor_type}")
         
     visualizer = Visualizer()
     scene = next(iter(dataset.scenes.values()))
@@ -59,6 +61,8 @@ def main(args: argparse.Namespace) -> None:
             total_steps=args.animation_steps,
             goal_radius=0.5
         )
+    else:
+        scene = scene.take_first_n_frames(args.animation_steps)
 
     visualizer.visualize(scene, time_scale=args.time_scale, desc=args.predictor_type)
 
