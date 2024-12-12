@@ -1,14 +1,14 @@
 model_type: neural_net
 batch_size: 64
-epochs: 10
+epochs: 4
 learning_rate: 1e-3
-hidden_dims: [1024, 1024, 1024, 1024]
-pred_steps: 5
+hidden_dims: [512, 512, 256]
+pred_steps: 6
 
 dataset: juelich
 data_folder_path: "./data/datasets/juelich/bottleneck"
-# train_scenes: [b090, b100, b110, b120, b140, b160, b180, b200, b220, l0, l2, l4]
-train_scenes: [b090]
+train_scenes: [b090, b100, b110, b120, b140, b160, b180, b200, b220, l0, l2, l4]
+# train_scenes: [b090]
 val_scenes: [b250]
 fdm_window_size: 20
 sampling_step: 1

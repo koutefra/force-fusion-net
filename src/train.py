@@ -60,7 +60,6 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError('Dataset ' + config['dataset'] + ' not supported.')
 
     if config['model_type'] == 'neural_net':
-        print('xxx')
         individual_features_dim = 6
         interaction_features_dim = 5
         obstacle_features_dim = 9
@@ -68,8 +67,7 @@ def main(args: argparse.Namespace) -> None:
             individual_features_dim,
             interaction_features_dim,
             obstacle_features_dim,
-            config['hidden_dims'],
-            config['dropout']
+            config['hidden_dims']
         )
         NeuralNetModel.keras_init(model)
     elif config['model_type'] == 'social_force':
