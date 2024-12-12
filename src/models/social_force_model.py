@@ -1,8 +1,10 @@
-from entities.batched_frames import BatchedFrames
-import numpy as np
 import torch
+import json
+import torch.nn as nn
+from models.base_model import BaseModel
+from entities.batched_frames import BatchedFrames
 
-class SocialForceModel:
+class SocialForceModel(BaseModel):
     def __init__(
         self, 
         A_interaction: float = 2.0,  # Interaction force constant, (m/s^(-2)) 
@@ -10,14 +12,51 @@ class SocialForceModel:
         B_interaction: float = 0.3,  # Interaction decay constant, m
         B_obstacle: float = 0.5,  # Interaction decay constant, m
         tau: float = 0.3,  # Relaxation time constant, s
-        desired_speed: float = 0.8,  # m/s
+        desired_speed: float = 1.2,  # m/s
     ):
-        self.A_interaction = A_interaction
-        self.A_obstacle = A_obstacle
-        self.B_interaction = B_interaction
-        self.B_obstacle = B_obstacle
-        self.tau = tau
-        self.desired_speed = desired_speed
+        super(SocialForceModel, self).__init__()
+        self.A_interaction = nn.Parameter(torch.tensor(A_interaction))
+        self.A_obstacle = nn.Parameter(torch.tensor(A_obstacle))
+        self.B_interaction = nn.Parameter(torch.tensor(B_interaction))
+        self.B_obstacle = nn.Parameter(torch.tensor(B_obstacle))
+        self.tau = nn.Parameter(torch.tensor(tau))
+        self.desired_speed = torch.tensor(desired_speed)
+
+    def forward_single(
+        self, 
+        x_individual: torch.Tensor, 
+        interaction_features: tuple[torch.Tensor, torch.Tensor],
+        obstacle_features: tuple[torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        # x_individual.shape: [batch_size, individual_fts_dim] 
+        # x_interaction.shape: [batch_size, l, interaction_fts_dim]
+        # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
+        x_interaction, interaction_mask = interaction_features
+        x_obstacle, obstacle_mask = obstacle_features
+        desired_force = self._desired_force(
+            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_x')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_y')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('vel_x')],
+            x_individual[:, BatchedFrames.get_individual_feature_index('vel_y')]
+        )
+        interaction_force = self._compute_force(
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_x')],
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_y')],
+            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dist')],
+            self.A_interaction,
+            self.B_interaction,
+            interaction_mask
+        )
+        obstacle_force = self._compute_force(
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_x')],
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_y')],
+            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dist_closest')],
+            self.A_obstacle,
+            self.B_obstacle,
+            obstacle_mask
+        )
+        total_force = desired_force + interaction_force + obstacle_force
+        return total_force
 
     def _desired_force(
         self, 
@@ -49,32 +88,22 @@ class SocialForceModel:
         total_force_y = -torch.sum(direction_y * force_magnitude, dim=1)
         return torch.stack((total_force_x, total_force_y), dim=-1)
 
-    def predict(self, batched_frames: BatchedFrames, as_numpy: bool = True) -> torch.Tensor | np.ndarray: 
-        if batched_frames.steps_count != 1:
-            raise ValueError("Social force model does not allow multiple steps ahead prediction.")
-        features = batched_frames.compute_all_features()
-        x_individual, (x_interaction, interaction_mask), (x_obstacle, obstacle_mask) = features
-        desired_force = self._desired_force(
-            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_x')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_y')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('vel_x')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('vel_y')]
-        )
-        interaction_force = self._compute_force(
-            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_x')],
-            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_y')],
-            x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dist')],
-            self.A_interaction,
-            self.B_interaction,
-            interaction_mask
-        )
-        obstacle_force = self._compute_force(
-            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_x')],
-            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dir_closest_y')],
-            x_obstacle[:, :, BatchedFrames.get_obstacle_feature_index('dist_closest')],
-            self.A_obstacle,
-            self.B_obstacle,
-            obstacle_mask
-        )
-        total_force = desired_force + interaction_force + obstacle_force
-        return total_force.numpy(force=True) if as_numpy else total_force
+    @staticmethod
+    def from_weight_file(path: str, device: str | torch.device = "cpu") -> "SocialForceModel":
+        with open(path, "r") as file:
+            param_grid = json.load(file)
+        model = SocialForceModel(**param_grid)
+        model.to(device)
+        return model
+
+    def save_model(self, path: str) -> None:
+        param_dict = {
+            'A_interaction': self.A_interaction.item(),
+            'A_obstacle': self.A_obstacle.item(),
+            'B_interaction': self.B_interaction.item(),
+            'B_obstacle': self.B_obstacle.item(),
+            'tau': self.tau.item(),
+            'desired_speed': self.desired_speed.item()
+        }
+        with open(path + '.json', 'w') as f:
+            json.dump(param_dict, f, indent=4)

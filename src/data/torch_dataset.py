@@ -47,6 +47,6 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         frames, person_ids, delta_times = zip(*data)
         batched_frames = BatchedFrames(frames, person_ids, delta_times, self.device, dtype=self.dtype)
         ground_truths = batched_frames.get_gt_next_positions()
-        if not ground_truths.is_contiguous():
+        if ground_truths is not None and not ground_truths.is_contiguous():
             ground_truths = ground_truths.contiguous()
         return batched_frames, ground_truths

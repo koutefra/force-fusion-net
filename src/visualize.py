@@ -4,14 +4,10 @@ from data.scene_dataset import SceneDataset
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
 from data.fdm_calculator import FiniteDifferenceCalculator
 from visualization.visualization import Visualizer
-from models.neural_net_predictor import NeuralNetPredictor
 from models.neural_net_model import NeuralNetModel
 from models.social_force_model import SocialForceModel
-from models.social_force_predictor import SocialForcePredictor
-from collections import OrderedDict, defaultdict
-from entities.scene import Scene
+from models.predictor import Predictor
 import random
-import json
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_type", required=True, type=str, help="The dataset type.")
@@ -45,23 +41,19 @@ def main(args: argparse.Namespace) -> None:
     # load predictor
     predictor = None
     if args.predictor_path:
-        if args.predictor_type == 'neural_net':
-            model = NeuralNetModel.from_weight_file(args.predictor_path)
-            predictor = NeuralNetPredictor(model, device=args.device)
-        elif args.predictor_type == 'social_force':
-            with open(args.predictor_path, "r") as file:
-                param_grid = json.load(file)
-            model = SocialForceModel(**param_grid)
-            predictor = SocialForcePredictor(model, args.device)
-        elif args.predictor_type == 'gt':
-            pass
+        if args.predictor_type != 'gt':
+            if args.predictor_type == 'neural_net':
+                model = NeuralNetModel.from_weight_file(args.predictor_path)
+            elif args.predictor_type == 'social_force':
+                model = SocialForceModel.from_weight_file(args.predictor_path)
+            predictor = Predictor(model, device=args.device)
         else:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
         
     visualizer = Visualizer()
     scene = next(iter(dataset.scenes.values()))
 
-    if predictor:
+    if args.predictor_type != 'gt':
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
             total_steps=args.animation_steps,

@@ -3,7 +3,6 @@ batch_size: 64
 epochs: 10
 learning_rate: 1e-3
 hidden_dims: [1024, 1024, 1024, 1024]
-dropout: 0.2
 pred_steps: 5
 
 dataset: juelich

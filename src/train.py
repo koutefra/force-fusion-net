@@ -8,9 +8,8 @@ import torch
 from data.scene_dataset import SceneDataset
 from data.loaders.juelich_bneck_loader import JuelichBneckLoader
 from models.neural_net_model import NeuralNetModel
-from models.neural_net_predictor import NeuralNetPredictor
+from models.predictor import Predictor
 from models.social_force_model import SocialForceModel
-from models.social_force_predictor import SocialForcePredictor
 from data.fdm_calculator import FiniteDifferenceCalculator
 import yaml
 from pathlib import Path
@@ -61,6 +60,7 @@ def main(args: argparse.Namespace) -> None:
         raise ValueError('Dataset ' + config['dataset'] + ' not supported.')
 
     if config['model_type'] == 'neural_net':
+        print('xxx')
         individual_features_dim = 6
         interaction_features_dim = 5
         obstacle_features_dim = 9
@@ -71,32 +71,27 @@ def main(args: argparse.Namespace) -> None:
             config['hidden_dims'],
             config['dropout']
         )
-        predictor = NeuralNetPredictor(
-            model=model,
-            device=args.device,
-            batch_size=config['batch_size'],
-            logdir_path=args.logdir
-        )
-        predictor.train(
-            train_dataset.scenes,
-            val_dataset.scenes,
-            pred_steps=config['pred_steps'],
-            learning_rate=float(config['learning_rate']),
-            epochs=config['epochs']
-        )
+        NeuralNetModel.keras_init(model)
     elif config['model_type'] == 'social_force':
-        model = SocialForceModel(config['dataset_fps'])
-        # predictor = SocialForcePredictor(
-        #     model,
-        #     logdir_path=args.logdir
-        # )
-        # predictor.train(
-        #     data=serialized_features,
-        #     param_grid=SocialForcePredictor.param_ranges_to_param_grid(config['param_ranges']),
-        #     save_path=os.path.join(args.logdir, 'social_force_best_grid.json')
-        # )
+        model = SocialForceModel(**config['weights']['params'])
+        if config['weights']['keras_random']:
+            SocialForceModel.keras_init(model)
     else:
         raise ValueError(f'No such model {args.model_type}')
+
+    predictor = Predictor(
+        model=model,
+        device=args.device,
+        batch_size=config['batch_size'],
+        logdir_path=args.logdir
+    )
+    predictor.train(
+        train_dataset.scenes,
+        val_dataset.scenes,
+        pred_steps=config['pred_steps'],
+        learning_rate=float(config['learning_rate']),
+        epochs=config['epochs']
+    )
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))
