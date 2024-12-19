@@ -44,14 +44,28 @@ class BaseModel(TrainableModule, ABC):
         return next_pos_predicted, next_vel_predicted
 
     def predict_step(self, xs, as_numpy=True):
-        """An overridable method performing a single prediction step."""
+        """An overriden method performing a single prediction step."""
         with torch.no_grad():
             batched_frames = xs
             features = batched_frames.compute_all_features()
+            person_ids = batched_frames.person_ids
             batch = self.forward_single(*features)
             if type(batch) is list:
                 batch = torch.stack(batch)
-            return batch.numpy(force=True) if as_numpy else batch
+            outputs = batch.numpy(force=True) if as_numpy else batch
+            return {
+                person_id: output
+                for person_id, output in zip(person_ids, outputs)
+            }
+
+    def predict(self, dataloader, as_numpy=True):
+        """Compute predictions for the given dataset. An overriden method."""
+        self.eval()
+        predictions = {}
+        for batch in dataloader:
+            xs = batch[0] if isinstance(batch, tuple) else batch
+            predictions.update(self.predict_step(xs, as_numpy=as_numpy))
+        return predictions
 
     def _process_feature(self, x: torch.Tensor, layer: nn.Linear, mask: torch.Tensor) -> torch.Tensor:
         if x.numel() > 0:

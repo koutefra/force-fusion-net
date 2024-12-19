@@ -1,7 +1,6 @@
 import torch
-import random
 from entities.scene import Scenes
-from entities.frame import Frames, Frame
+from entities.frame import Frame
 from entities.batched_frames import BatchedFrames
 
 class TorchSceneDataset(torch.utils.data.Dataset):
@@ -24,7 +23,7 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         for scene_id, scene in scenes.items():
             f_step = scene.frame_step
             for person_id, trajectory in scene.frames.to_trajectories().items():
-                for frame_number in trajectory.get_pred_valid_frame_numbers(steps, f_step):
+                for frame_number in trajectory.get_frames_with_valid_predecessors(steps + 1, f_step):
                     mapping.append((scene_id, person_id, frame_number))
         return mapping
 
@@ -32,10 +31,10 @@ class TorchSceneDataset(torch.utils.data.Dataset):
         return len(self._mapping)
 
     def __getitem__(self, idx: int) -> tuple[list[Frame], int, float]:
-        scene_id, person_id, start_f_number = self._mapping[idx]
+        scene_id, person_id, last_f_number = self._mapping[idx]
         scene = self.scenes[scene_id]
         f_step = scene.frame_step
-        last_f_number = start_f_number + self.pred_steps * f_step
+        start_f_number = last_f_number - self.pred_steps * f_step
         delta_time = 1 / scene.fps
         frames = [
             scene.frames[frame_number]

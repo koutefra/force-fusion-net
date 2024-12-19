@@ -23,7 +23,6 @@ class Person:
             velocity=vel_scale(self.velocity) if self.velocity else None,
             acceleration=acc_scale(self.acceleration) if self.acceleration else None
         )
-
     
     def apply_kinematic_equation(self, delta_time: float) -> "Person":
         next_position, next_velocity= kinematic_equation(
@@ -37,6 +36,15 @@ class Person:
             position=next_position,
             goal=self.goal,
             velocity=next_velocity
+        )
+
+    def set_velocity(self, vel: Velocity) -> "Person":
+        return Person(
+            id=self.id,
+            position=self.position,
+            goal=self.goal,
+            velocity=vel,
+            acceleration=self.acceleration
         )
 
     def set_acceleration(self, acc: Acceleration) -> "Person":

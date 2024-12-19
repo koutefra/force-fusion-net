@@ -97,15 +97,15 @@ class Point2D:
         return {"x": self.x, "y": self.y}
 
     @staticmethod
-    def calculate_average_change(points: list[T], delta_times: list[float], result_type: type[T]) -> T:
+    def calculate_average_change(points: list[T], delta_time: float, result_type: type[T]) -> T:
         """Calculate the average change in x and y for a sequence of points over specified delta_times."""
-        if len(points) < 2 or len(delta_times) != len(points) - 1:
+        if len(points) < 2:
             raise ValueError("Need at least two points, and delta_times should be one less than points.")
 
         dx_total, dy_total = 0.0, 0.0
         for i in range(1, len(points)):
-            dx_total += (points[i].x - points[i - 1].x) / delta_times[i - 1]
-            dy_total += (points[i].y - points[i - 1].y) / delta_times[i - 1]
+            dx_total += (points[i].x - points[i - 1].x) / delta_time
+            dy_total += (points[i].y - points[i - 1].y) / delta_time
 
         avg_dx = dx_total / (len(points) - 1)
         avg_dy = dy_total / (len(points) - 1)
@@ -120,15 +120,15 @@ class Point2D:
 @dataclass(frozen=True)
 class Velocity(Point2D):
     @staticmethod
-    def from_points(positions: list[Point2D], delta_times: list[float]) -> "Velocity":
-        return Point2D.calculate_average_change(positions, delta_times, Velocity)
+    def from_points(positions: list[Point2D], delta_time: float) -> "Velocity":
+        return Point2D.calculate_average_change(positions, delta_time, Velocity)
 
 
 @dataclass(frozen=True)
 class Acceleration(Point2D):
     @staticmethod
-    def from_velocities(velocities: list[Velocity], delta_times: list[float]) -> "Acceleration":
-        return Point2D.calculate_average_change(velocities, delta_times, Acceleration)
+    def from_velocities(velocities: list[Velocity], delta_time: float) -> "Acceleration":
+        return Point2D.calculate_average_change(velocities, delta_time, Acceleration)
 
 def kinematic_equation(cur_positions: Any, cur_velocities: Any, cur_accelerations: Any, delta_times: Any) -> tuple[Any, Any]:
     next_positions = (

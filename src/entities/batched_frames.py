@@ -19,6 +19,7 @@ class BatchedFrames:
         self.steps_count = len(frames[0]) - 1  # - 1 for the last frame
         self.step = 0
         self.delta_times = torch.tensor(delta_times, device=self.device, dtype=self.dtype)
+        self.person_ids = person_ids
         self.initialize_frames(frames, person_ids)
 
     def validate_inputs(self, frames: list[list[Frame]], person_ids: list[int]):
@@ -121,7 +122,7 @@ class BatchedFrames:
         for frame in frames:
             obstacle_positions = [
                 obstacle.p1.to_list() + obstacle.p2.to_list()
-                for obstacle in frame.obstacles.values()
+                for obstacle in frame.obstacles
             ]
             # Pad using NumPy to match `max_obstacles`
             num_obstacles = len(obstacle_positions)

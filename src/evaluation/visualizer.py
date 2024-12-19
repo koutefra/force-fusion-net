@@ -47,6 +47,7 @@ class Visualizer:
     def __init__(
         self, 
         target_screen_size: int = 1200, 
+        font_size: int = 24,
         circle_radius: int = 10, 
         text_size: int = 20,
         vector_line_width: int = 2, 
@@ -54,8 +55,9 @@ class Visualizer:
         obstacle_line_width: int = 5,
         arrow_angle: float = math.pi / 6,
         output_dir: Optional[str] = "animations"
-    ) -> None:
+    ):
         self.target_screen_size = target_screen_size
+        self.font_size = font_size
         self.circle_radius = circle_radius
         self.text_size = text_size
         self.vector_line_width = vector_line_width
@@ -107,11 +109,19 @@ class Visualizer:
         person: Person, 
         color: tuple[int, int, int],
         min_pos: Point2D, 
-        spatial_scale: float
+        spatial_scale: float,
+        draw_id: bool = False
     ) -> None:
         """Draw a single person with their velocity and acceleration vectors."""
         scaled_position = (person.position - min_pos) * spatial_scale
         pygame.draw.circle(screen, color, scaled_position.to_tuple(), self.circle_radius)
+
+        # Draw the person's ID in the middle of the circle
+        if draw_id:
+            font = pygame.font.Font(None, self.font_size)
+            id_surface = font.render(str(person.id), True, (0, 0, 0))  # Render ID as black text
+            id_rect = id_surface.get_rect(center=scaled_position.to_tuple())
+            screen.blit(id_surface, id_rect)
 
         # Draw the goal as a rectangle if it exists
         if person.goal:
@@ -178,18 +188,18 @@ class Visualizer:
     def draw_frame(
         self, 
         screen: Surface, 
-        scene: Scene, 
         frame_number: int,
         frame: Frame, 
         min_pos: Point2D, 
         spatial_scale: float,
+        draw_person_ids: bool = False,
         person_ids: Optional[list[int]] = None
     ) -> None:
         """Draw all persons and obstacles for a single frame."""
         for person_id, person in frame.persons.items():
             color = self.focus_person_color if person_ids and person_id in person_ids else self.other_person_color
-            self.draw_person(screen, person, color, min_pos, spatial_scale)
-        self.draw_obstacles(screen, list(frame.obstacles.values()), min_pos, spatial_scale)
+            self.draw_person(screen, person, color, min_pos, spatial_scale, draw_id=draw_person_ids)
+        self.draw_obstacles(screen, frame.obstacles, min_pos, spatial_scale)
 
         if self.output_dir:
             pygame.image.save(screen, os.path.join(self.output_dir, f"frames/frame_{frame_number}.png"))
@@ -197,6 +207,7 @@ class Visualizer:
     def draw_scene(
         self, 
         scene: Scene, 
+        draw_person_ids: bool = False,
         person_ids: Optional[list[int]] = None,
         time_scale: float = 1.0
     ) -> None:
@@ -208,7 +219,7 @@ class Visualizer:
         scaled_fps = float(scene.fps * time_scale)
 
         for frame_number, frame in scene.frames.items():
-            self.draw_frame(screen, scene, frame_number, frame, min_pos, spatial_scale, person_ids)
+            self.draw_frame(screen, frame_number, frame, min_pos, spatial_scale, draw_person_ids=draw_person_ids, person_ids=person_ids)
             pygame.display.flip()
             clock.tick(scaled_fps)
             screen.fill(self.background_color)
@@ -246,10 +257,11 @@ class Visualizer:
         self, 
         scene: Scene, 
         desc: Optional[str] = None,
+        draw_person_ids: bool = False,
         person_ids: Optional[list[int]] = None,
         time_scale: float = 1.0
     ) -> None:
-        self.draw_scene(scene, person_ids, time_scale)
+        self.draw_scene(scene, draw_person_ids=draw_person_ids, person_ids=person_ids, time_scale=time_scale)
         pygame.quit()
         if self.output_dir:
             duration = 1/(scene.fps * time_scale)

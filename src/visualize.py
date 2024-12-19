@@ -1,11 +1,10 @@
 import argparse
 import numpy as np
 from data.scene_dataset import SceneDataset
-from entities.scene import Scene
-from data.loaders.juelich_bneck_loader import JuelichBneckLoader 
-from data.fdm_calculator import FiniteDifferenceCalculator
-from visualization.visualization import Visualizer
+from data.julich_caserne_loader import JulichCaserneLoader 
+from evaluation.visualizer import Visualizer
 from models.direct_net import DirectNet
+from models.fusion_net import FusionNet
 from models.social_force import SocialForce
 from models.predictor import Predictor
 import random
@@ -20,6 +19,8 @@ parser.add_argument("--fdm_win_size", default=20, type=int, help="Finitie differ
 parser.add_argument("--time_scale", default=1.0, type=float, help="Time scale of the animations.")
 parser.add_argument("--sampling_step", default=1, type=int, help="Dataset sampling step.")
 parser.add_argument("--animation_steps", default=300, type=int, help="How many steps should be simulated.")
+parser.add_argument("--draw_person_ids", action="store_true", help="Draw person IDs in the middle of the circle.")
+parser.add_argument("--goal_radius", default=0.4, type=float, help="The radius around goal positions.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
 
@@ -29,28 +30,26 @@ def main(args: argparse.Namespace) -> None:
 
     # load data
     if args.dataset_type == 'juelich_bneck':
-        fdm_calculator = FiniteDifferenceCalculator(args.fdm_win_size)
-        dataset = SceneDataset([JuelichBneckLoader(
-            [(args.dataset_path, args.dataset_name)], 
-            args.sampling_step, 
-            compute_accelerations=True, 
-            fdm_calculator=fdm_calculator)
-        ])
+        dataset = SceneDataset.from_loaders([JulichCaserneLoader([(args.dataset_path, args.dataset_name)])])
     else:
         raise ValueError(f"Unknown dataset type: {args.dataset_type}")
 
+    # appxoximate quantities
+    dataset = dataset.approximate_velocities(args.fdm_win_size, "backward")
+    
     # load predictor
     predictor = None
-    if args.predictor_path:
-        if args.predictor_type != 'gt':
-            if args.predictor_type == 'neural_net':
-                model = DirectNet.from_weight_file(args.predictor_path)
-            elif args.predictor_type == 'social_force':
-                model = SocialForce.from_weight_file(args.predictor_path)
-            else:
-                raise ValueError(f"Unknown predictor type: {args.predictor_type}")
+    if args.predictor_path and args.predictor_type != 'gt':
+        if args.predictor_type == 'direct_net':
+            model = DirectNet.from_weight_file(args.predictor_path)
+        elif args.predictor_type == 'fusion_net':
+            model = FusionNet.from_weight_file(args.predictor_path)
+        elif args.predictor_type == 'social_force':
+            model = SocialForce.from_weight_file(args.predictor_path)
+        else:
+            raise ValueError(f"Unknown predictor type: {args.predictor_type}")
 
-            predictor = Predictor(model, device=args.device)
+        predictor = Predictor(model, device=args.device)
         
     visualizer = Visualizer()
     scene = next(iter(dataset.scenes.values()))
@@ -59,12 +58,15 @@ def main(args: argparse.Namespace) -> None:
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
             total_steps=args.animation_steps,
-            goal_radius=0.5
+            goal_radius=args.goal_radius
         )
     else:
         scene = scene.take_first_n_frames(args.animation_steps)
 
-    visualizer.visualize(scene, time_scale=args.time_scale, desc=args.predictor_type)
+    scene = scene.approximate_velocities(args.fdm_win_size, "central")
+    scene = scene.approximate_accelerations(args.fdm_win_size, "central")
+
+    visualizer.visualize(scene, draw_person_ids=args.draw_person_ids, time_scale=args.time_scale, desc=args.predictor_type)
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))

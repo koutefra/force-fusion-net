@@ -1,16 +1,18 @@
+import math
 from dataclasses import dataclass
 from entities.person import Person
 from entities.obstacle import LineObstacle
 from collections import OrderedDict, defaultdict
-from typing import Callable
+from typing import Callable, Any
 from entities.vector2d import Point2D, Velocity, Acceleration, closest_point_on_line
 from itertools import islice
+from tqdm import tqdm
 
 @dataclass(frozen=True)
 class Frame:
     number: int 
     persons: dict[int, Person]
-    obstacles: dict[int, LineObstacle]
+    obstacles: list[LineObstacle]
 
     def normalized(
         self, 
@@ -23,10 +25,7 @@ class Frame:
                 person_id: person.normalized(pos_scale, vel_scale, acc_scale)
                 for person_id, person in self.persons.items()
             },
-            obstacles={
-                obstacle_id: obstacle.normalized(pos_scale, vel_scale, acc_scale)
-                for obstacle_id, obstacle in self.obstacles.items()
-            }
+            obstacles=[o.normalized(pos_scale, vel_scale, acc_scale) for o in self.obstacles]
         )
 
     def get_person_ids_outside(self, bounding_box: tuple[float, float]) -> list[int]:
@@ -50,17 +49,14 @@ class Frame:
             obstacles=self.obstacles
         )
 
-    def filter_invalid_persons(self) -> "Frame":
+    def apply_kinematic_equation(self, delta_time: float, frame_step: int) -> "Frame":
         return Frame(
-            number=self.number,
-            persons={pid: person for pid, person in self.persons.items() if person.goal and person.velocity},
-            obstacles=self.obstacles
-        )
-
-    def apply_kinematic_equation(self, delta_time: float) -> "Frame":
-        return Frame(
-            number=self.number,
-            persons={pid: person.apply_kinematic_equation(delta_time) for pid, person in self.persons.items()},
+            number=self.number + frame_step,
+            persons={
+                pid: person.apply_kinematic_equation(delta_time) 
+                for pid, person in self.persons.items()
+                if person.velocity and person.acceleration
+            },
             obstacles=self.obstacles
         )
 
@@ -121,7 +117,7 @@ class Frame:
 
     def get_obstacle_features(self, person: Person) -> list[list[float]]:
         obstacle_features = []
-        for line in self.obstacles.values():
+        for line in self.obstacles:
             closest_point = closest_point_on_line(person.position, line.p1, line.p2)
 
             distances, directions = {}, {}
@@ -153,6 +149,32 @@ class Frames(OrderedDict[int, Frame]):
             for frame_number, frame in self.items()
         }))
 
+    def approximate_velocities(
+        self,
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str,  # "backward" or "central"
+        print_progress: bool = True
+    ) -> "Frames":
+        return Frames.from_trajectories(
+            Trajectories.from_frames(self).approximate_velocities(n_window_elements, frame_step, delta_time, fdm_method, print_progress),
+            obstacles={frame_number: frame.obstacles for frame_number, frame in self.items()}
+        )
+
+    def approximate_accelerations(
+        self,
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str,  # "backward" or "central"
+        print_progress: bool = True
+    ) -> "Frames":
+        return Frames.from_trajectories(
+            Trajectories.from_frames(self).approximate_accelerations(n_window_elements, frame_step, delta_time, fdm_method, print_progress),
+            obstacles={frame_number: frame.obstacles for frame_number, frame in self.items()}
+        )
+
     def filter_by_person(self, person_id: int) -> "Trajectory":
         filtered_records = OrderedDict(
             (frame_number, frame.persons[person_id])
@@ -172,7 +194,7 @@ class Frames(OrderedDict[int, Frame]):
         return Frames(OrderedDict(islice(self.items(), n)))
 
     @classmethod
-    def from_trajectories(cls, trajectories: "Trajectories", obstacles: dict[int, LineObstacle]) -> "Frames":
+    def from_trajectories(cls, trajectories: "Trajectories", obstacles: dict[int, list[LineObstacle]]) -> "Frames":
         frame_dict = defaultdict(dict)
         
         for trajectory in trajectories.values():
@@ -180,7 +202,7 @@ class Frames(OrderedDict[int, Frame]):
                 frame_dict[frame_number][trajectory.person_id] = person
         
         frames = {
-            frame_number: Frame(number=frame_number, persons=frame_persons, obstacles=obstacles)
+            frame_number: Frame(number=frame_number, persons=frame_persons, obstacles=obstacles[frame_number])
             for frame_number, frame_persons in frame_dict.items()
         }
         
@@ -194,35 +216,101 @@ class Trajectory:
     person_id: int 
     records: OrderedDict[int, Person]
 
-    def get_pred_valid_frame_numbers(self, steps: int, frame_step: int) -> list[int]:
-        if len(self.records) == 0:
-            return []
+    def approximate_velocities(
+        self, 
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str = "backward",  # either backward or central 
+    ) -> "Trajectory":
+        velocities = self._process_frame_windows(
+            n_window_elements=n_window_elements,
+            frame_step=frame_step,
+            window_start=fdm_method,
+            valid_func=lambda _: True,
+            process_func=lambda lst: Velocity.from_points([p.position for p in lst], delta_time),
+        )
+        return Trajectory(
+            person_id=self.person_id,
+            records={
+                **{f_num: person.set_velocity(None) for f_num, person in self.records.items()},
+                **{f_num: self.records[f_num].set_velocity(vel) for f_num, vel in velocities.items()}
+            }
+        )
+
+    def approximate_accelerations(
+        self, 
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str = "backward"  # either backward or central 
+    ) -> "Trajectory":
+        accelerations = self._process_frame_windows(
+            n_window_elements=n_window_elements,
+            frame_step=frame_step,
+            window_start=fdm_method,
+            valid_func=lambda p: p.velocity is not None,
+            process_func=lambda lst: Acceleration.from_velocities([p.velocity for p in lst], delta_time),
+        )
+        return Trajectory(
+            person_id=self.person_id,
+            records={
+                **{f_num: person.set_acceleration(None) for f_num, person in self.records.items()},
+                **{f_num: self.records[f_num].set_acceleration(acc) for f_num, acc in accelerations.items()}
+            }
+        )
+
+    def _process_frame_windows(
+        self, 
+        n_window_elements: int, 
+        frame_step: int, 
+        window_start: str,
+        valid_func: Callable[[Person], bool],
+        process_func: Callable[[list[Person]], Any] = lambda _: True
+    ) -> dict[int, Any]:
+        if window_start == "backward":
+            n_window_elements_from_start = n_window_elements - 1  # -1 for the current (middle) element
+            n_window_elements_from_end = 1
+        elif window_start == "central":
+            n_window_elements_from_start = math.ceil(n_window_elements / 2)
+            n_window_elements_from_end = math.floor(n_window_elements / 2)
+        else:
+            raise ValueError("Invalid value for 'window_start'. Use 'backward' or 'central'.")
 
         frame_numbers = list(self.records.keys())
-        segments = []
+        records_list = list(self.records.values())
+        results = {}
 
-        for i in range(len(frame_numbers)):
-            frame_number = frame_numbers[i]
-            person_data = self.records[frame_number]
-            person_valid = person_data.velocity is not None and person_data.goal is not None
-            
-            if person_valid:
-                last_segment_end = segments[-1][1] if segments else None
+        for i in range(n_window_elements_from_start * frame_step, len(frame_numbers)):
+            start_idx = i - n_window_elements_from_start * frame_step
+            end_idx = i + n_window_elements_from_end * frame_step
+            window_frame_numbers = frame_numbers[start_idx:end_idx:frame_step]
 
-                if last_segment_end is not None and frame_number == last_segment_end + frame_step:
-                    # Extend the current segment
-                    segments[-1] = (segments[-1][0], frame_number)
-                else:
-                    # Start a new segment
-                    segments.append((frame_number, frame_number))
+            # Check if the window has the correct spacing
+            if len(window_frame_numbers) != n_window_elements or any(
+                window_frame_numbers[j] - window_frame_numbers[j - 1] != frame_step
+                for j in range(1, len(window_frame_numbers))
+            ):
+                continue
 
-        valid_frame_numbers = []
-        for start, end in segments:
-            # Compute valid starting frames in the segment
-            valid_starts = range(start, end - (steps - 1) * frame_step, frame_step)
-            valid_frame_numbers.extend(valid_starts)
+            window_records = records_list[start_idx:end_idx:frame_step]
 
-        return valid_frame_numbers
+            if all(valid_func(p) for p in window_records):
+                results[frame_numbers[i]] = process_func(window_records)
+
+        return results
+
+    def get_frames_with_valid_predecessors(self, steps: int, frame_step: int) -> list[int]:
+        """
+        Returns valid frame numbers that are preceded by a number of valid frames 
+        (frames with filled velocity and goal) equal to 'steps'.
+        """
+        return list(self._process_frame_windows(
+            steps, 
+            frame_step, 
+            window_start="backward",
+            valid_func=lambda p: p.velocity is not None and p.goal is not None
+        ).keys())
 
 class Trajectories(dict[int, Trajectory]):
     @classmethod
@@ -231,6 +319,32 @@ class Trajectories(dict[int, Trajectory]):
         for k, v in data_dict.items():
             obj[k] = Trajectory(person_id=k, records=v)
         return obj
+
+    def approximate_velocities(
+        self, 
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str = "backward",  # either backward or central 
+        print_progress: bool = True
+    ) -> "Trajectories":
+        return {
+            person_id: trajectory.approximate_velocities(n_window_elements, frame_step, delta_time, fdm_method)
+            for person_id, trajectory in tqdm(self.items(), desc="Processing frames...", disable=not print_progress)
+        }
+
+    def approximate_accelerations(
+        self, 
+        n_window_elements: int, 
+        frame_step: int, 
+        delta_time: float,
+        fdm_method: str = "backward",  # either backward or central 
+        print_progress: bool = True
+    ) -> "Trajectories":
+        return {
+            person_id: trajectory.approximate_accelerations(n_window_elements, frame_step, delta_time, fdm_method)
+            for person_id, trajectory in tqdm(self.items(), desc="Processing frames...", disable=not print_progress)
+        }
 
     def filter_by_frame(self, frame_number: int) -> "Frame":
         persons_in_frame = {
@@ -262,5 +376,5 @@ class Trajectories(dict[int, Trajectory]):
         
         return cls(trajectories)
 
-    def to_frames(self, obstacles: dict[int, LineObstacle]) -> Frames:
+    def to_frames(self, obstacles: dict[int, list[LineObstacle]]) -> Frames:
         return Frames.from_trajectories(self, obstacles)

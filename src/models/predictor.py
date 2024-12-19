@@ -48,7 +48,6 @@ class Predictor:
             optimizer=torch.optim.Adam(self.model.parameters(), lr=learning_rate),
             device=self.device,
             logdir=self.logdir_path,
-            metrics={'MAE': torchmetrics.MeanAbsoluteError()},
             loss=torch.nn.MSELoss()
         )
 
@@ -74,8 +73,4 @@ class Predictor:
         dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), pred_steps=0, device=self.device, dtype=self.dtype) 
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, collate_fn=dataset.prepare_batch)
         preds_acc = self.model.predict(loader, as_numpy=True)
-        preds_acc = {
-            person_id: Acceleration(x=pred_acc[0], y=pred_acc[1]) 
-            for pred_acc, person_id in zip(preds_acc, mock_scene.frames.to_trajectories().keys())
-        }
-        return preds_acc
+        return {person_id: Acceleration(acc[0], acc[1]) for person_id, acc in preds_acc.items()}

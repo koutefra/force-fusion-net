@@ -3,14 +3,13 @@ import random
 import os
 import datetime
 import re
-import numpy as np
 import torch
+import numpy as np
 from data.scene_dataset import SceneDataset
-from data.loaders.juelich_bneck_loader import JuelichBneckLoader
-from models.direct_net import NeuralNetModel
+from data.julich_caserne_loader import JulichCaserneLoader
+from models.direct_net import DirectNet
 from models.predictor import Predictor
-from models.social_force import SocialForceModel
-from data.fdm_calculator import FiniteDifferenceCalculator
+from models.social_force import SocialForce
 import yaml
 from pathlib import Path
 
@@ -39,41 +38,34 @@ def main(args: argparse.Namespace) -> None:
     with open(args.config, "r") as file:
         config = yaml.safe_load(file)
 
-    if config['dataset'] == 'juelich':
+    if config['dataset'] == 'julich':
         folder_path = (project_dir / config["data_folder_path"]).resolve()
         train_paths_names = [((folder_path / (name + '.txt')).resolve(), name) for name in config['train_scenes']]
         val_paths_names = [((folder_path / (name + '.txt')).resolve(), name) for name in config['val_scenes']]
-        fdm_calculator = FiniteDifferenceCalculator(config['fdm_window_size'])
-        train_dataset = SceneDataset([JuelichBneckLoader(
-            train_paths_names, 
-            config['sampling_step'], 
-            compute_accelerations=False, 
-            fdm_calculator=fdm_calculator)
-        ])
-        val_dataset = SceneDataset([JuelichBneckLoader(
-            val_paths_names, 
-            config['sampling_step'], 
-            compute_accelerations=False, 
-            fdm_calculator=fdm_calculator)
-        ])
+        train_dataset = SceneDataset.from_loaders([JulichCaserneLoader(train_paths_names)])
+        val_dataset = SceneDataset.from_loaders([JulichCaserneLoader(val_paths_names)])
     else:
         raise ValueError('Dataset ' + config['dataset'] + ' not supported.')
 
-    if config['model_type'] == 'neural_net':
+    train_dataset = train_dataset.approximate_velocities(config['fdm_window_size'], "backward")
+    val_dataset = val_dataset.approximate_velocities(config['fdm_window_size'], "backward")
+
+    if config['model_type'] == 'direct_net':
         individual_features_dim = 6
         interaction_features_dim = 5
         obstacle_features_dim = 9
-        model = NeuralNetModel(
+        model = DirectNet(
             individual_features_dim,
             interaction_features_dim,
             obstacle_features_dim,
-            config['hidden_dims']
+            config['hidden_dims'],
+            config['dropout']
         )
-        NeuralNetModel.keras_init(model)
+        DirectNet.keras_init(model)
     elif config['model_type'] == 'social_force':
-        model = SocialForceModel(**config['weights']['params'])
+        model = SocialForce(**config['weights']['params'])
         if config['weights']['keras_random']:
-            SocialForceModel.keras_init(model)
+            SocialForce.keras_init(model)
     else:
         raise ValueError(f'No such model {args.model_type}')
 

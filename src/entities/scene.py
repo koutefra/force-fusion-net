@@ -27,6 +27,32 @@ class Scene:
             tag=self.tag
         )
 
+    def approximate_velocities(self, n_window_elements: int, fdm_method: str, print_progress: bool = True) -> "Scene":
+        if print_progress:
+            print(f'Scene {self.id}: calculating velocities...')
+        delta_time = 1 / self.fps
+        return Scene(
+            id=self.id,
+            frames=self.frames.approximate_velocities(n_window_elements, self.frame_step, delta_time, fdm_method, print_progress),
+            bounding_box=self.bounding_box,
+            fps=self.fps,
+            frame_step=self.frame_step,
+            tag=self.tag
+        )
+
+    def approximate_accelerations(self, n_window_elements: int, fdm_method: str, print_progress: bool = True) -> "Scene":
+        if print_progress:
+            print(f'Scene {self.id}: calculating accelerations...')
+        delta_time = 1 / self.fps
+        return Scene(
+            id=self.id,
+            frames=self.frames.approximate_accelerations(n_window_elements, self.frame_step, delta_time, fdm_method, print_progress),
+            bounding_box=self.bounding_box,
+            fps=self.fps,
+            frame_step=self.frame_step,
+            tag=self.tag
+        )
+
     def simulate(
         self,
         predict_acc_func: Callable[[Frame], list[Acceleration]],
@@ -35,34 +61,36 @@ class Scene:
         person_ids: Optional[list[int]] = None
     ) -> "Scene":
         frame_numbers = list(self.frames.keys())
-        first_frame_number, first_frame = frame_numbers[0], self.frames[frame_numbers[0]]
-        resulting_frames = [first_frame.filter_invalid_persons().remove_persons(person_ids if person_ids else [])]
+        first_f_num, first_frame = frame_numbers[0], self.frames[frame_numbers[0]]
+        last_f_num = first_f_num + total_steps * self.frame_step
+        resulting_frames = [first_frame.remove_persons(person_ids) if person_ids else first_frame]
         delta_time = self.frame_step / self.fps
         finished_person_ids = set(person_ids or [])
-        for step in tqdm(
-            range(first_frame_number, first_frame_number + total_steps * self.frame_step, self.frame_step), 
-            desc="Computing the simulation..."
-        ):
+        for cur_f_num in tqdm(range(first_f_num, last_f_num + 1, self.frame_step), desc="Calculating the simulation..."):
             frame = resulting_frames[-1]
             acc_pred = predict_acc_func(frame)
             frame = frame.set_accelerations(acc_pred)
             resulting_frames[-1] = frame  # resave the currect frame enriched with the accelerations
 
-            next_frame = frame.apply_kinematic_equation(delta_time)
+            next_frame = frame.apply_kinematic_equation(delta_time, self.frame_step)
             finished_person_ids.update(next_frame.get_person_ids_at_goal(goal_radius))
             finished_person_ids.update(next_frame.get_person_ids_outside(self.bounding_box))
 
-            new_persons = {}
-            if step + self.frame_step in self.frames:
-                new_persons = self.frames[step + self.frame_step].filter_invalid_persons().persons
-            new_persons = {pid: person for pid, person in new_persons.items() if pid not in finished_person_ids}
+            # add new persons from the original scene if available
+            if cur_f_num + self.frame_step in self.frames:
+                next_frame = next_frame.add_persons(self.frames[cur_f_num + self.frame_step].persons)
+            next_frame = next_frame.remove_persons(finished_person_ids)
 
-            next_frame = next_frame.add_persons(new_persons).remove_persons(finished_person_ids)
-            resulting_frames.append(next_frame)
+            # add next frame for further
+            if cur_f_num != last_f_num:
+                resulting_frames.append(next_frame)
 
         return Scene(
             id=self.id,
-            frames={first_frame_number + i * self.frame_step: frame for frame, i in zip(resulting_frames, range(len(resulting_frames)))},
+            frames=Frames({
+                f_num: frame 
+                for frame, f_num in zip(resulting_frames, range(first_f_num, last_f_num, self.frame_step))
+            }),
             bounding_box=self.bounding_box,
             fps=self.fps,
             frame_step=self.frame_step,
@@ -88,4 +116,16 @@ class Scenes(dict[str, Scene]):
         return {
             scene_id: scene.normalized(pos_scale, vel_scale, acc_scale)
             for scene_id, scene in self.items()
+        }
+
+    def approximate_velocities(self, n_window_elements: int, fdm_method: str, print_progress: bool = True) -> "Scenes":
+        return {
+            scene_id: scene.approximate_velocities(n_window_elements, fdm_method, print_progress=False)
+            for scene_id, scene in tqdm(self.items(), f"Calculating velocities using FDM {fdm_method}", disable=not print_progress)
+        }
+
+    def approximate_accelerations(self, n_window_elements: int, fdm_method: str, print_progress: bool = True) -> "Scene":
+        return {
+            scene_id: scene.approximate_accelerations(n_window_elements, fdm_method, print_progress=False)
+            for scene_id, scene in tqdm(self.items(), f"Calculating accelerations using FDM {fdm_method}", disable=not print_progress)
         }

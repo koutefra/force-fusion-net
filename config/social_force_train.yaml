@@ -14,8 +14,8 @@ weights:
     tau: 0.5
     desired_speed: 0.7
 
-dataset: juelich
-data_folder_path: "./data/datasets/juelich/bottleneck"
+dataset: julich
+data_folder_path: "./data/datasets/julich_bottleneck_caserne"
 # train_scenes: [b090, b100, b110, b120, b140, b160, b180, b200, b220, l0, l2, l4]
 train_scenes: [b090]
 val_scenes: [b250]
