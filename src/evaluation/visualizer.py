@@ -236,8 +236,9 @@ class Visualizer:
 
         # Numerical sort using regex
         def numerical_sort(value: str):
-            match = re.search(r'(\d+)', value)
-            return int(match.group()) if match else value
+            filename = os.path.basename(value)  # Extract the filename
+            match = re.search(r'(\d+)', filename)  # Find numbers in the filename
+            return int(match.group()) if match else float('inf')  # Use infinity if no number is found
 
         # List and sort frame files
         frame_files = sorted(
