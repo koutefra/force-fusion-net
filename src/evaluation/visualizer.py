@@ -2,8 +2,9 @@ import pygame
 import re
 import os
 import shutil
-import imageio
 from pygame import Surface
+import imageio
+import imageio.v3 as iio  # Newer `imageio.v3` API is faster and more efficient
 from entities.vector2d import Point2D
 from entities.scene import Scene
 from entities.person import Person
@@ -12,6 +13,7 @@ from entities.obstacle import LineObstacle
 import math
 import sys
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 class Visualizer:
     default_colors: dict[str, tuple[int, int, int]] = {
@@ -232,25 +234,30 @@ class Visualizer:
     def _create_mp4(self, scene_id: str, duration: float = 0.1, desc: Optional[str] = None) -> None:
         frames_dir = os.path.join(self.output_dir, 'frames')
 
+        # Numerical sort using regex
         def numerical_sort(value: str):
-            parts = re.compile(r'(\d+)').findall(value)
-            return int(parts[0]) if parts else value
+            match = re.search(r'(\d+)', value)
+            return int(match.group()) if match else value
 
+        # List and sort frame files
         frame_files = sorted(
             [os.path.join(frames_dir, f) for f in os.listdir(frames_dir) if f.endswith('.png')],
             key=numerical_sort
         )
-        frames = [imageio.imread(frame) for frame in frame_files]
-        mp4_filename = os.path.join(self.output_dir, f"scene_{scene_id}" + (f"_{desc}" if desc else "") + "_animation.mp4")
 
-        # Save the frames as an MP4 video
-        writer = imageio.get_writer(mp4_filename, fps=1/duration)  # fps is 1/duration (frames per second)
-        for frame in frames:
-            writer.append_data(frame)
-        writer.close()
+        # MP4 filename
+        mp4_filename = os.path.join(
+            self.output_dir, f"scene_{scene_id}" + (f"_{desc}" if desc else "") + "_animation.mp4"
+        )
 
-        # Clean up the frames directory
-        shutil.rmtree(os.path.join(self.output_dir, 'frames'))
+        # Write frames to video
+        with imageio.get_writer(mp4_filename, fps=1/duration) as writer:
+            with ThreadPoolExecutor() as executor:
+                for frame in executor.map(iio.imread, frame_files):
+                    writer.append_data(frame)
+
+        # Clean up frames directory
+        shutil.rmtree(frames_dir)
         print(f"MP4 saved as {mp4_filename}")
 
     def visualize(

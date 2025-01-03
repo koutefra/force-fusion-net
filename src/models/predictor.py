@@ -1,6 +1,5 @@
 import torch
 import os
-import torchmetrics
 from entities.vector2d import Acceleration, Point2D
 from entities.scene import Scenes, Scene
 from entities.frame import Frame, Frames
@@ -33,7 +32,8 @@ class Predictor:
         pred_steps: int,
         learning_rate: float,
         epochs: int,
-        loss: str = "mse"
+        loss: str = "mse",
+        metrics: dict = {}
     ) -> dict[str, torch.Tensor]:
         if loss != "mse":
             raise ValueError(f"Loss {loss} not supported")
@@ -48,7 +48,8 @@ class Predictor:
             optimizer=torch.optim.Adam(self.model.parameters(), lr=learning_rate),
             device=self.device,
             logdir=self.logdir_path,
-            loss=torch.nn.MSELoss()
+            loss=torch.nn.MSELoss(),
+            metrics=metrics
         )
 
         def save_model_func(self: BaseModel, epoch: int, logs: dict[str, torch.Tensor]) -> None:

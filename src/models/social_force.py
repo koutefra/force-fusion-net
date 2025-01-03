@@ -12,7 +12,7 @@ class SocialForce(BaseModel):
         B_interaction: float = 0.3,  # Interaction decay constant, m
         B_obstacle: float = 0.5,  # Interaction decay constant, m
         tau: float = 0.3,  # Relaxation time constant, s
-        desired_speed: float = 1.2,  # m/s
+        desired_speed: float = 0.8,  # m/s
     ):
         super(SocialForce, self).__init__()
         self.A_interaction = nn.Parameter(torch.tensor(A_interaction))

@@ -1,5 +1,0 @@
-1. [Done] implement *central* FDM and apply it in visualizations
-2. create and implement evaluation strategy
-    - a module that takes a scene and computes all kinds of metrics for that scene
-3. [Done] implement different neural net architectures
-4. run experiments to tune the hyperparameters (the evaluation can be called after each epoch)

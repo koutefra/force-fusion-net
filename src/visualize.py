@@ -6,7 +6,9 @@ from evaluation.visualizer import Visualizer
 from models.direct_net import DirectNet
 from models.fusion_net import FusionNet
 from models.social_force import SocialForce
+from evaluation.evaluator import Evaluator
 from models.predictor import Predictor
+from entities.vector2d import Point2D
 import random
 
 parser = argparse.ArgumentParser()
@@ -20,7 +22,7 @@ parser.add_argument("--time_scale", default=1.0, type=float, help="Time scale of
 parser.add_argument("--sampling_step", default=1, type=int, help="Dataset sampling step.")
 parser.add_argument("--animation_steps", default=300, type=int, help="How many steps should be simulated.")
 parser.add_argument("--draw_person_ids", action="store_true", help="Draw person IDs in the middle of the circle.")
-parser.add_argument("--goal_radius", default=0.4, type=float, help="The radius around goal positions.")
+parser.add_argument("--goal_radius", default=0.3, type=float, help="The radius around goal positions.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
 
@@ -65,6 +67,8 @@ def main(args: argparse.Namespace) -> None:
 
     scene = scene.approximate_velocities(args.fdm_win_size, "central")
     scene = scene.approximate_accelerations(args.fdm_win_size, "central")
+
+    print(Evaluator().evaluate_scene(scene))
 
     visualizer.visualize(scene, draw_person_ids=args.draw_person_ids, time_scale=args.time_scale, desc=args.predictor_type)
 

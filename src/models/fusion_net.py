@@ -17,6 +17,7 @@ class FusionNet(BaseModel):
         self.obstacle_fts_dim = obstacle_fts_dim
         self.hidden_dims = hidden_dims
         self.output_dim = 2
+        self.dropout = dropout
 
         self.fc_interaction = nn.Linear(interaction_fts_dim, hidden_dims[0])
         self.fc_obstacle = nn.Linear(obstacle_fts_dim, hidden_dims[0])
