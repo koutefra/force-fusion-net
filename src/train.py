@@ -112,13 +112,13 @@ def main(args: argparse.Namespace) -> None:
     )
 
     # create the animation
-    from evaluation.visualizer import Visualizer
-    visualizer = Visualizer(output_dir=args.logdir)
+    from evaluation.animation import Animation
+    animation = Animation(output_dir=args.logdir)
     scene = next(iter(val_dataset.scenes.values()))
     scene = scene.simulate(predict_acc_func=predictor.predict, total_steps=500, goal_radius=0.4)
     scene = scene.approximate_velocities(args.fdm_win_size, "central")
     scene = scene.approximate_accelerations(args.fdm_win_size, "central")
-    visualizer.visualize(scene)
+    animation.create(scene)
 
     with open(os.path.join(args.logdir, "evaluation.txt"), "w") as file:
         file.write(str(Evaluator().evaluate_scene(scene)))
