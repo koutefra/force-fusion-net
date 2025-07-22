@@ -1,8 +1,11 @@
 import torch
 import json
+import itertools
+from tqdm import tqdm
 import torch.nn as nn
 from models.base_model import BaseModel
 from entities.batched_frames import BatchedFrames
+from entities.scene import Scene
 
 class SocialForce(BaseModel):
     def __init__(
@@ -107,3 +110,50 @@ class SocialForce(BaseModel):
         }
         with open(path + '.json', 'w') as f:
             json.dump(param_dict, f, indent=4)
+
+    @staticmethod
+    def tune(
+        scenes: dict[str, Scene],
+        param_grid: dict[str, list],
+        device: str = "cpu",
+        goal_radius: float = 0.4,
+        steps: int = 300,
+        fdm_win_size: int = 20,
+        metric: str = "ADE"
+    ) -> "SocialForce":
+        from evaluation.evaluator import Evaluator
+        from models.predictor import Predictor
+
+        best_score = float("inf")
+        best_params = None
+
+        keys = list(param_grid.keys())
+        values = list(param_grid.values())
+
+        print("Starting grid search for SocialForce tuning...")
+        for combo in tqdm(list(itertools.product(*values))):
+            param_set = dict(zip(keys, combo))
+            model = SocialForce(**param_set)
+            predictor = Predictor(model=model, device=device)
+
+            total_score = 0.0
+            for scene in scenes.values():
+                simulated = scene.simulate(
+                    predict_acc_func=predictor.predict,
+                    total_steps=steps,
+                    goal_radius=goal_radius
+                )
+                simulated = simulated.approximate_velocities(fdm_win_size, "central")
+                simulated = simulated.approximate_accelerations(fdm_win_size, "central")
+                evaluator = Evaluator()
+                eval_result = evaluator.evaluate_ade_fde(scene_gt=scene, scene_pred=simulated)
+                score = eval_result[metric]
+                total_score += score
+
+            avg_score = total_score / len(scenes)
+            if avg_score < best_score:
+                best_score = avg_score
+                best_params = param_set
+
+        print(f"Best {metric}: {best_score:.4f} with params: {best_params}")
+        return SocialForce(**best_params)

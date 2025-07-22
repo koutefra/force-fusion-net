@@ -1,48 +1,88 @@
 import argparse
 import numpy as np
+import random
 import torch
-import pandas as pd
-import json
-import os
-from typing import Dict, List, Tuple, Any
 from data.scene_dataset import SceneDataset
 from data.julich_caserne_loader import JulichCaserneLoader
-from models.direct_net import DirectNet
-from models.fusion_net import FusionNet
-from models.social_force import SocialForce
-from models.predictor import Predictor
 from evaluation.evaluator import Evaluator
-from evaluation.visualizer import Visualizer
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-parser = argparse.ArgumentParser(description="Comprehensive evaluation of pedestrian models")
-parser.add_argument("--dataset_path", required=True, type=str, help="Path to dataset")
-parser.add_argument("--test_scenes", type=lambda x: x.strip('[]').split(','), 
-                    default=['b090', 'b100', 'b110', 'b120', 'b140', 'b160', 'b180', 'b200', 'b220', 'b250', 'l0', 'l2', 'l4'],
-                    help="Test scenes as comma-separated list")
-parser.add_argument("--model_paths", type=str, nargs='+', required=True, 
-                    help="Paths to trained model weights")
-parser.add_argument("--model_types", type=str, nargs='+', required=True,
-                    help="Model types corresponding to model paths")
-parser.add_argument("--model_names", type=str, nargs='+', 
-                    help="Custom names for models (optional)")
-parser.add_argument("--baseline_comparisons", type=str, nargs='*', 
-                    default=['social_force', 'gt'],
-                    help="Baseline methods to compare against")
-parser.add_argument("--fdm_win_size", default=20, type=int, help="FDM window size")
-parser.add_argument("--simulation_steps", default=500, type=int, help="Number of simulation steps")
-parser.add_argument("--goal_radius", default=0.4, type=float, help="Goal radius for simulations")
-parser.add_argument("--output_dir", default="evaluation_results", type=str, help="Output directory")
-parser.add_argument("--device", default="cpu", type=str, help="Device to use")
-parser.add_argument("--seed", default=21, type=int, help="Random seed")
-
+from models.predictor import Predictor
+from models.fusion_net import FusionNet
+from models.direct_net import DirectNet
+from models.social_force import SocialForce
 
 
 def main(args):
-    evaluator = ComprehensiveEvaluator(args.output_dir)
-    results = evaluator.run_evaluation(args)
-    return results
+    # Seed control
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
+    # Load scene
+    dataset = SceneDataset.from_loaders([
+        JulichCaserneLoader([(args.dataset_path, args.scene_name)])
+    ])
+    dataset = dataset.approximate_velocities(args.fdm_win_size, "backward")
+    scene = next(iter(dataset.scenes.values()))
+
+    # Simulate
+    if args.model_type == "gt":
+        # Just trim the ground truth to match the time span of predicted sim
+        scene = scene.take_first_n_frames(args.simulation_steps)
+    else:
+        # Load model
+        if args.model_type == "fusion_net":
+            model = FusionNet.from_weight_file(args.model_path)
+        elif args.model_type == "direct_net":
+            model = DirectNet.from_weight_file(args.model_path)
+        elif args.model_type == "social_force":
+            model = SocialForce.from_weight_file(args.model_path)
+        else:
+            raise ValueError(f"Unsupported model type: {args.model_type}")
+
+        predictor = Predictor(model, device=args.device)
+        scene = scene.simulate(
+            predict_acc_func=predictor.predict,
+            total_steps=args.simulation_steps,
+            goal_radius=args.goal_radius
+        )
+
+    scene = scene.approximate_velocities(args.fdm_win_size, "central")
+    scene = scene.approximate_accelerations(args.fdm_win_size, "central")
+
+    # Evaluate
+    evaluator = Evaluator()
+    results = {}
+
+    # 1. Classic frame-based evaluation (collisions, CoM, velocities, etc.)
+    results.update(evaluator.evaluate_scene(scene))
+
+    # 2. Force magnitude statistics
+    results.update(evaluator.evaluate_force_magnitudes(scene))
+
+    # 3. Minimum distance to other pedestrians
+    results.update(evaluator.evaluate_min_distances(scene))
+
+    # 4. ADE / FDE per pedestrian
+    scene_gt = next(iter(dataset.scenes.values())).take_first_n_frames(args.simulation_steps)
+    results.update(evaluator.evaluate_individual_ADE_FDE(scene_gt, scene))
+
+    # Output
+    print(f"\n📊 Evaluation for {args.model_type} on scene {scene.id}:\n" + "-" * 60)
+    for k, v in results.items():
+        print(f"{k:25s}: {v:.4f}")
+
 
 if __name__ == "__main__":
-    main(parser.parse_args([] if "__file__" not in globals() else None))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_path", required=True, type=str)
+    parser.add_argument("--scene_name", required=True, type=str)
+    parser.add_argument("--model_path", required=True, type=str)
+    parser.add_argument("--model_type", required=True, type=str,
+                        choices=["fusion_net", "direct_net", "social_force", "gt"])
+    parser.add_argument("--fdm_win_size", type=int, default=20)
+    parser.add_argument("--simulation_steps", type=int, default=2000)
+    parser.add_argument("--goal_radius", type=float, default=0.5)
+    parser.add_argument("--device", default="cpu", type=str)
+    parser.add_argument("--seed", type=int, default=21)
+
+    main(parser.parse_args())

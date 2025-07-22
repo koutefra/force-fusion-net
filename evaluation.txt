@@ -1,0 +1,59 @@
+📊 Evaluation for gt on scene juelich_b160:
+------------------------------------------------------------
+agent_collisions         : 28.0000
+obstacle_collisions      : 11.0000
+center_of_mass_x_avg     : 0.1232
+center_of_mass_y_avg     : -0.0330
+velocity_avg             : 0.2429
+velocity_max             : 1.0266
+velocity_std             : 0.1510
+force_mean               : 0.0813
+force_std                : 0.0440
+force_max                : 0.2751
+min_dist_mean            : 0.4638
+min_dist_std             : 0.1236
+min_dist_min             : 0.1601
+ADE_ped_mean             : 0.0000
+ADE_ped_std              : 0.0000
+FDE_ped_mean             : 0.0000
+FDE_ped_std              : 0.0000
+
+📊 Evaluation for social_force on scene juelich_b160:
+------------------------------------------------------------
+agent_collisions         : 336.0000
+obstacle_collisions      : 278.0000
+center_of_mass_x_avg     : 0.2579
+center_of_mass_y_avg     : -0.0392
+velocity_avg             : 0.3079
+velocity_max             : 0.9132
+velocity_std             : 0.1962
+force_mean               : 0.0872
+force_std                : 0.0638
+force_max                : 0.6857
+min_dist_mean            : 0.5113
+min_dist_std             : 0.2337
+min_dist_min             : 0.0395
+ADE_ped_mean             : 1.2973
+ADE_ped_std              : 0.5367
+FDE_ped_mean             : 3.5052
+FDE_ped_std              : 1.7244
+
+📊 Evaluation for fusion_net on scene juelich_b160:
+------------------------------------------------------------
+agent_collisions         : 0.0000
+obstacle_collisions      : 8.0000
+center_of_mass_x_avg     : 1.1241
+center_of_mass_y_avg     : -0.2241
+velocity_avg             : 0.3226
+velocity_max             : 0.9721
+velocity_std             : 0.2024
+force_mean               : 0.0414
+force_std                : 0.0359
+force_max                : 0.2548
+min_dist_mean            : 0.5501
+min_dist_std             : 0.1768
+min_dist_min             : 0.2034
+ADE_ped_mean             : 0.9292
+ADE_ped_std              : 0.4969
+FDE_ped_mean             : 2.9729
+FDE_ped_std              : 1.8051

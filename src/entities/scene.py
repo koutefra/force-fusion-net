@@ -13,6 +13,18 @@ class Scene:
     frame_step: int = 1
     tag: Optional[list[int]] = None
 
+    def get_all_person_ids(self) -> set[int]:
+        return {pid for frame in self.frames.values() for pid in frame.persons}
+
+    def get_person_trajectory(self, pid: int) -> list[Point2D]:
+        """Returns a list of positions of the person with given pid across frames."""
+        trajectory = []
+        for frame in self.frames.values():
+            person = frame.persons.get(pid)
+            if person is not None:
+                trajectory.append(person.position)
+        return trajectory
+
     def normalized(
         self, 
         pos_scale: Callable[[Point2D], Point2D] = lambda x: x, 
