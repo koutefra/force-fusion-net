@@ -150,28 +150,41 @@ class BatchedFrames:
         person_positions: torch.Tensor,  # (batch_size, 2)
         person_velocities: torch.Tensor,  # (batch_size, 2)
         person_goals: torch.Tensor,  # (batch_size, 2)
-        epsilon: float
+        epsilon: float,
+        return_positions: bool = False
     ) -> torch.Tensor:
         diffs_to_goal = person_goals - person_positions
         dists_to_goal = torch.norm(diffs_to_goal, dim=1, keepdim=True)  # (batch_size, 1)
         directions = diffs_to_goal / (dists_to_goal + epsilon)  # (batch_size, 2)
         vel_towards_goal = torch.sum(person_velocities * directions, dim=1, keepdim=True)  # (batch_size, 1)
-        features = torch.cat((
-            person_velocities,  # Velocity components (batch_size, 2)
-            dists_to_goal,      # Distance to goal (batch_size, 1)
-            directions,         # Direction to goal components (batch_size, 2)
-            vel_towards_goal    # Velocity towards goal (batch_size, 1)
-        ), dim=1)  # Shape: (batch_size, 6)
+        if return_positions:
+            features = torch.cat((
+                person_velocities,  # Velocity components (batch_size, 2)
+                dists_to_goal,      # Distance to goal (batch_size, 1)
+                directions,         # Direction to goal components (batch_size, 2)
+                vel_towards_goal,    # Velocity towards goal (batch_size, 1)
+                person_positions
+            ), dim=1)  # Shape: (batch_size, 6)
+        else:
+            features = torch.cat((
+                person_velocities,  # Velocity components (batch_size, 2)
+                dists_to_goal,      # Distance to goal (batch_size, 1)
+                directions,         # Direction to goal components (batch_size, 2)
+                vel_towards_goal,    # Velocity towards goal (batch_size, 1)
+            ), dim=1)  # Shape: (batch_size, 6)
         return features
 
     @staticmethod
-    def get_individual_feature_mapping():
-        feature_names = ['vel_x', 'vel_y', 'goal_dist', 'goal_dir_x', 'goal_dir_y', 'goal_vel']
+    def get_individual_feature_mapping(return_positions: bool = False):
+        if return_positions:
+            feature_names = ['vel_x', 'vel_y', 'goal_dist', 'goal_dir_x', 'goal_dir_y', 'goal_vel', 'pos_x', 'pos_y']
+        else:
+            feature_names = ['vel_x', 'vel_y', 'goal_dist', 'goal_dir_x', 'goal_dir_y', 'goal_vel']
         return {name: index for index, name in enumerate(feature_names)}
 
     @staticmethod
-    def get_individual_feature_index(name: str):
-        return BatchedFrames.get_individual_feature_mapping()[name]
+    def get_individual_feature_index(name: str, return_positions: bool = False):
+        return BatchedFrames.get_individual_feature_mapping(return_positions)[name]
 
     @staticmethod
     def compute_interaction_features(
@@ -246,7 +259,8 @@ class BatchedFrames:
         return BatchedFrames.get_obstacle_feature_mapping()[name]
 
     def compute_all_features(
-        self
+        self,
+        return_positions: bool = False
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
         """
         Returns preprocessed tensor features. 
@@ -259,7 +273,8 @@ class BatchedFrames:
             self.person_positions,
             self.person_velocities,
             self.person_goals,
-            self.epsilon
+            self.epsilon,
+            return_positions
         )
         interaction_features = self.compute_interaction_features(
             self.person_positions,

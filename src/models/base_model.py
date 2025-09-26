@@ -7,6 +7,8 @@ from models.trainable_module import TrainableModule
 from abc import ABC, abstractmethod
 
 class BaseModel(TrainableModule, ABC):
+    return_positions_in_features: bool = False
+
     @abstractmethod
     def forward_single(
         self, 
@@ -47,7 +49,7 @@ class BaseModel(TrainableModule, ABC):
         """An overriden method performing a single prediction step."""
         with torch.no_grad():
             batched_frames = xs
-            features = batched_frames.compute_all_features()
+            features = batched_frames.compute_all_features(self.return_positions_in_features)
             person_ids = batched_frames.person_ids
             batch = self.forward_single(*features)
             if type(batch) is list:

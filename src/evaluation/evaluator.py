@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 import numpy as np
 from evaluation.frame_evaluator import FrameEvaluator
+from evaluation.flow_curve import FlowCurveEvaluator
 import torchmetrics
 from torchmetrics.functional.regression.mae import _mean_absolute_error_update
 
@@ -40,8 +41,12 @@ class Evaluator:
             """Return the maximum error."""
             return self.max_error
 
-    def __init__(self):
+    def __init__(self, flow_rect: tuple[float], flow_axis: tuple[float]):
         self.frame_evaluator = FrameEvaluator() 
+        self.flow_eval = FlowCurveEvaluator(
+            rect=flow_rect,
+            axis=flow_axis
+        )
 
     def evaluate_scene(self, scene: Scene, agent_coll_thr: float = 0.2, obstacle_coll_thr: float = 0.07) -> dict[str, float]:
         return self.frame_evaluator.evaluate_frames(
@@ -126,3 +131,6 @@ class Evaluator:
             "min_dist_std": float(np.std(min_dists)) if min_dists else 0.0,
             "min_dist_min": float(np.min(min_dists)) if min_dists else 0.0,
         }
+
+    def evaluate_flow_curve(self, scene: Scene) -> dict[str, float]:
+        return self.flow_eval.evaluate_flow_curve(scene)

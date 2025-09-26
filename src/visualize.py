@@ -6,6 +6,7 @@ from evaluation.animation import Animation
 from models.direct_net import DirectNet
 from models.fusion_net import FusionNet
 from models.social_force import SocialForce
+from models.social_force_b160 import SocialForceB160
 from models.predictor import Predictor
 from evaluation.visualizer import Visualizer
 import random
@@ -22,7 +23,7 @@ parser.add_argument("--sampling_step", default=1, type=int, help="Dataset sampli
 parser.add_argument("--animation_steps", default=300, type=int, help="How many steps should be simulated.")
 parser.add_argument("--create_plot_only", action="store_true", help="Creates only plot, no animation.")
 parser.add_argument("--draw_person_ids", action="store_true", help="Draw person IDs in the middle of the circle.")
-parser.add_argument("--goal_radius", default=0.5, type=float, help="The radius around goal positions.")
+parser.add_argument("--goal_radius", default=0.6, type=float, help="The radius around goal positions.")
 parser.add_argument("--seed", default=21, type=int, help="Random seed.")
 parser.add_argument("--device", default="cpu", type=str, help="Device to use (e.g., 'cpu', 'cuda').")
 
@@ -48,6 +49,8 @@ def main(args: argparse.Namespace) -> None:
             model = FusionNet.from_weight_file(args.predictor_path)
         elif args.predictor_type == 'social_force':
             model = SocialForce.from_weight_file(args.predictor_path)
+        elif args.predictor_type == 'social_force_b160':
+            model = SocialForceB160.from_weight_file(args.predictor_path)
         else:
             raise ValueError(f"Unknown predictor type: {args.predictor_type}")
 
@@ -67,7 +70,7 @@ def main(args: argparse.Namespace) -> None:
     scene = scene.approximate_velocities(args.fdm_win_size, "central")
     scene = scene.approximate_accelerations(args.fdm_win_size, "central")
 
-    Visualizer.plot_trajectories(scene, output_file_path=f'animations/trajectories_{args.predictor_type}_{scene.id}.png')
+    Visualizer.plot_trajectories(scene, output_file_path=f'results/trajectories_{args.predictor_type}_{scene.id}.png')
 
     if not args.create_plot_only:
         Animation().create(scene, draw_person_ids=args.draw_person_ids, time_scale=args.time_scale, desc=args.predictor_type)

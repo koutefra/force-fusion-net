@@ -8,14 +8,17 @@ from entities.batched_frames import BatchedFrames
 from entities.scene import Scene
 
 class SocialForce(BaseModel):
+    return_positions_in_features = True
+
+    # default values taken from: https://pedestriandynamics.org/models/social_force_model
     def __init__(
         self, 
-        A_interaction: float = 2.0,  # Interaction force constant, (m/s^(-2)) 
-        A_obstacle: float = 6.0,  # Interaction force constant, (m/s^(-2)) 
-        B_interaction: float = 0.3,  # Interaction decay constant, m
-        B_obstacle: float = 0.5,  # Interaction decay constant, m
-        tau: float = 0.3,  # Relaxation time constant, s
-        desired_speed: float = 0.7,  # m/s
+        A_interaction: float = 25.0,  # Interaction force constant, (m/s^(-2)) 
+        A_obstacle: float = 25.0,  # Interaction force constant, (m/s^(-2)) 
+        B_interaction: float = 0.08,  # Interaction decay constant, m
+        B_obstacle: float = 0.08,  # Interaction decay constant, m
+        tau: float = 0.5,  # Relaxation time constant, s
+        desired_speed: float = 0.8,  # m/s
     ):
         super(SocialForce, self).__init__()
         self.A_interaction = nn.Parameter(torch.tensor(A_interaction))
@@ -36,11 +39,13 @@ class SocialForce(BaseModel):
         # x_obstacle.shape: [batch_size, k, obstacle_fts_dim]
         x_interaction, interaction_mask = interaction_features
         x_obstacle, obstacle_mask = obstacle_features
+        individual_feature_mapping = BatchedFrames.get_individual_feature_mapping(return_positions=True)
+        # returns this: {'vel_x': 0, 'vel_y': 1, 'goal_dist': 2, 'goal_dir_x': 3, 'goal_dir_y': 4, 'goal_vel': 5, 'pos_x': 6, 'pos_y': 7}
         desired_force = self._desired_force(
-            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_x')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('goal_dir_y')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('vel_x')],
-            x_individual[:, BatchedFrames.get_individual_feature_index('vel_y')]
+            x_individual[:, individual_feature_mapping['goal_dir_x']],
+            x_individual[:, individual_feature_mapping['goal_dir_y']],
+            x_individual[:, individual_feature_mapping['vel_x']],
+            x_individual[:, individual_feature_mapping['vel_y']]
         )
         interaction_force = self._compute_force(
             x_interaction[:, :, BatchedFrames.get_interaction_feature_index('dir_x')],

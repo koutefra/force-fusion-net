@@ -90,8 +90,6 @@ def main(args: argparse.Namespace) -> None:
             args.hidden_dims,
             args.dropout
         )
-    elif args.model_type == 'social_force':
-        model = SocialForce()
     else:
         raise ValueError(f'No such model {args.model_type}')
     
