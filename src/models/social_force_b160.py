@@ -74,7 +74,7 @@ class SocialForceB160(BaseModel):
         obstacle_force = self._compute_obstacle_force_b160(positions)
 
         total_force = desired_force + interaction_force + obstacle_force
-        return total_force
+        return total_force, (desired_force, interaction_force, obstacle_force)
 
     def _desired_force(
         self, 

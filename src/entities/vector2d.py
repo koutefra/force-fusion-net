@@ -117,6 +117,16 @@ class Point2D:
             bottom_left.y <= self.y <= top_right.y
         )
 
+    def save(self) -> dict:
+        """Return a plain JSON-serializable dict representation."""
+        return {"x": float(self.x), "y": float(self.y)}
+
+    @staticmethod
+    def load(data: dict) -> "Point2D":
+        """Reconstruct Point2D from a JSON dict."""
+        return Point2D(float(data["x"]), float(data["y"]))
+
+
 @dataclass(frozen=True)
 class Velocity(Point2D):
     @staticmethod
@@ -154,3 +164,31 @@ def closest_point_on_line(point: Point2D, line_start: Point2D, line_end: Point2D
     closest_point = line_start + line_unit_vec * projection_length
     
     return closest_point
+
+@dataclass(frozen=True)
+class ForceDecomposition:
+    desired: Acceleration
+    repulsive_obs: Acceleration
+    repulsive_agents: Acceleration
+
+    def total(self) -> Acceleration:
+        """Return the vector sum of all components (if any are present)."""
+        parts = [f for f in [self.desired, self.repulsive_obs, self.repulsive_agents]]
+        total_x = sum(p.x for p in parts)
+        total_y = sum(p.y for p in parts)
+        return Acceleration(total_x, total_y)
+
+    def save(self) -> dict:
+        return {
+            "desired": self.desired.save(),
+            "repulsive_obs": self.repulsive_obs.save(),
+            "repulsive_agents": self.repulsive_agents.save()
+        }
+
+    @staticmethod
+    def load(data: dict) -> "ForceDecomposition":
+        return ForceDecomposition(
+            desired=Acceleration.load(data["desired"]),
+            repulsive_obs=Acceleration.load(data["repulsive_obs"]),
+            repulsive_agents=Acceleration.load(data["repulsive_agents"])
+        )

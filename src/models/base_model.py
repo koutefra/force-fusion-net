@@ -23,6 +23,7 @@ class BaseModel(TrainableModule, ABC):
         for step in range(batched_frames.steps_count):
             features = batched_frames.compute_all_features()
             pred_accs = self.forward_single(*features)
+            pred_accs = pred_accs[0] if len(pred_accs) > 1 else pred_accs  # Handle models that return (total, components)
             new_pos, new_vel = self.apply_predictions(
                 cur_positions=batched_frames.person_positions,
                 cur_velocities=batched_frames.person_velocities,
@@ -46,18 +47,18 @@ class BaseModel(TrainableModule, ABC):
         return next_pos_predicted, next_vel_predicted
 
     def predict_step(self, xs, as_numpy=True):
-        """An overriden method performing a single prediction step."""
         with torch.no_grad():
-            batched_frames = xs
-            features = batched_frames.compute_all_features(self.return_positions_in_features)
-            person_ids = batched_frames.person_ids
-            batch = self.forward_single(*features)
-            if type(batch) is list:
-                batch = torch.stack(batch)
-            outputs = batch.numpy(force=True) if as_numpy else batch
+            feats = xs.compute_all_features(self.return_positions_in_features)
+            out = self.forward_single(*feats)
+            total, comps = (out if isinstance(out, tuple) else (out, None))
+            if isinstance(total, list): total = torch.stack(total)
+            if as_numpy:
+                total = total.numpy(force=True)
+                if comps is not None: comps = tuple(c.numpy(force=True) for c in comps)
             return {
-                person_id: output
-                for person_id, output in zip(person_ids, outputs)
+                pid: {'total': t, 'desired': d, 'repulsive_agents': i, 'repulsive_obs': o}
+                for pid, t, d, i, o in zip(xs.person_ids, total,
+                                        *(comps or ( [None]*len(xs.person_ids), )*3))
             }
 
     def predict(self, dataloader, as_numpy=True):

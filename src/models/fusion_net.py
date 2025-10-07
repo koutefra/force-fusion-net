@@ -48,7 +48,7 @@ class FusionNet(BaseModel):
         interaction_out = self.fc_out_interaction(self.fcs_interaction(x_interaction))
         obstacle_out = self.fc_out_obstacle(self.fcs_obstacle(x_obstacle))
 
-        return individual_out + interaction_out + obstacle_out
+        return individual_out + interaction_out + obstacle_out, (individual_out, interaction_out, obstacle_out)
 
     def save_model(self, path: str) -> None:
         torch.save({

@@ -138,6 +138,22 @@ class Frame:
             ])
         return obstacle_features
 
+    def to_dict(self) -> dict:
+        return {
+            "number": self.number,
+            "persons": {pid: p.to_dict() for pid, p in self.persons.items()},
+            "obstacles": [{"p1": o.p1.save(), "p2": o.p2.save()} for o in self.obstacles],
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> "Frame":
+        from entities.person import Person
+        from entities.obstacle import LineObstacle
+        persons = {int(pid): Person.from_dict(pdict) for pid, pdict in data["persons"].items()}
+        obstacles = [LineObstacle(Point2D.load(o["p1"]), Point2D.load(o["p2"])) for o in data["obstacles"]]
+        return Frame(number=int(data["number"]), persons=persons, obstacles=obstacles)
+
+
 class Frames(OrderedDict[int, Frame]):
     def normalized(
         self, 

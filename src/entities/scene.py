@@ -67,7 +67,7 @@ class Scene:
 
     def simulate(
         self,
-        predict_acc_func: Callable[[Frame], list[Acceleration]],
+        predict_acc_func: Callable[[Frame], dict[int, Acceleration]],
         total_steps: int,
         goal_radius: float,
         person_ids: Optional[list[int]] = None
@@ -118,6 +118,32 @@ class Scene:
             frame_step=self.frame_step,
             tag=self.tag
         )
+
+    def to_json(self, path: str) -> None:
+        import json
+        data = {
+            "id": self.id,
+            "fps": self.fps,
+            "frame_step": self.frame_step,
+            "bounding_box": [self.bounding_box[0].save(), self.bounding_box[1].save()],
+            "frames": {str(k): f.to_dict() for k, f in self.frames.items()},
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    @staticmethod
+    def from_json(path: str) -> "Scene":
+        import json
+        from entities.frame import Frame, Frames
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        bbox = (Point2D.load(data["bounding_box"][0]), Point2D.load(data["bounding_box"][1]))
+        frames = Frames({int(k): Frame.from_dict(v) for k, v in data["frames"].items()})
+        return Scene(
+            id=data["id"], frames=frames, bounding_box=bbox,
+            fps=float(data["fps"]), frame_step=int(data.get("frame_step", 1))
+        )
+
 
 class Scenes(dict[str, Scene]):
     def normalized(

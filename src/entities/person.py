@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from entities.vector2d import Point2D, Velocity, Acceleration
-from entities.vector2d import kinematic_equation
+from entities.vector2d import kinematic_equation, ForceDecomposition
 from typing import Optional, Callable
 
 @dataclass(frozen=True)
@@ -10,6 +10,11 @@ class Person:
     goal: Point2D
     velocity: Optional[Velocity] = None
     acceleration: Optional[Acceleration] = None
+    forces: Optional[ForceDecomposition] = None
+
+    def replace(self, **kwargs) -> "Person":
+        """Return a copy of this Person with specified fields replaced."""
+        return Person(**{**self.__dict__, **kwargs})
 
     def normalized(
         self, 
@@ -68,3 +73,24 @@ class Person:
             dir_to_goal.y,
             vel_towards_goal
         ]
+
+    def to_dict(self) -> dict:
+        return {
+            "id": int(self.id),
+            "position": self.position.save(),
+            "goal": self.goal.save(),
+            "velocity": self.velocity.save() if self.velocity else None,
+            "acceleration": self.acceleration.save() if self.acceleration else None,
+            "forces": self.forces.save() if self.forces else None,  # 🆕
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> "Person":
+        return Person(
+            id=int(data["id"]),
+            position=Point2D.load(data["position"]),
+            goal=Point2D.load(data["goal"]),
+            velocity=Velocity.load(data["velocity"]) if data["velocity"] else None,
+            acceleration=Acceleration.load(data["acceleration"]) if data["acceleration"] else None,
+            forces=ForceDecomposition.load(data.get("forces")) if data.get("forces") else None,  # 🆕
+        )

@@ -134,3 +134,42 @@ class Evaluator:
 
     def evaluate_flow_curve(self, scene: Scene) -> dict[str, float]:
         return self.flow_eval.evaluate_flow_curve(scene)
+
+    def compute_predicted_forces(
+        self,
+        scene: Scene,
+        predictor: Predictor,
+    ) -> Scene:
+        """Compute and attach predicted accelerations (forces) and decompositions."""
+        from entities.frame import Frames
+        new_frames = {}
+
+        for t, frame in scene.frames.items():
+            if not frame.persons:
+                new_frames[t] = frame
+                continue
+
+            preds = predictor.predict(frame, return_decomposition=True)
+
+            persons_with_forces = {
+                pid: person.set_acceleration(acc).replace(forces=forces)
+                for pid, person in frame.persons.items()
+                for acc, forces in [preds.get(pid, (None, None))]
+                if acc is not None
+            }
+
+            new_frames[t] = frame.__class__(
+                number=frame.number,
+                persons=persons_with_forces,
+                obstacles=frame.obstacles,
+            )
+
+        return Scene(
+            id=f"{scene.id}_pred_forces",
+            frames=Frames(new_frames),
+            bounding_box=scene.bounding_box,
+            fps=scene.fps,
+            frame_step=scene.frame_step,
+            tag=scene.tag,
+        )
+

@@ -26,10 +26,17 @@ def main(args):
     dataset = dataset.approximate_velocities(args.fdm_win_size, "backward")
     scene = next(iter(dataset.scenes.values()))
 
+    # Evaluate
+    flow_rect = tuple(args.flow_rect)   # (xmin, xmax, ymin, ymax)
+    flow_axis = tuple(args.flow_axis)   # (ax, ay)
+    evaluator = Evaluator(flow_rect=flow_rect, flow_axis=flow_axis)
+    results = {}
+
     # Simulate
     if args.model_type == "gt":
         # Just trim the ground truth to match the time span of predicted sim
         scene = scene.take_first_n_frames(args.simulation_steps)
+        scene = scene.approximate_accelerations(args.fdm_win_size, "central")
     else:
         # Load model
         if args.model_type == "fusion_net":
@@ -44,20 +51,16 @@ def main(args):
             raise ValueError(f"Unsupported model type: {args.model_type}")
 
         predictor = Predictor(model, device=args.device)
+
+        if args.precompute_forces:
+            evaluator.compute_predicted_forces(scene, predictor).to_json(f'scene_{scene.id}_with_forces_{args.model_type}.json')
+            return
+
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
             total_steps=args.simulation_steps,
             goal_radius=args.goal_radius
         )
-
-    scene = scene.approximate_velocities(args.fdm_win_size, "central")
-    scene = scene.approximate_accelerations(args.fdm_win_size, "central")
-
-    # Evaluate
-    flow_rect = tuple(args.flow_rect)   # (xmin, xmax, ymin, ymax)
-    flow_axis = tuple(args.flow_axis)   # (ax, ay)
-    evaluator = Evaluator(flow_rect=flow_rect, flow_axis=flow_axis)
-    results = {}
 
     # 1. Classic frame-based evaluation (collisions, CoM, velocities, etc.)
     results.update(evaluator.evaluate_scene(scene))
@@ -110,6 +113,11 @@ if __name__ == "__main__":
         help="Flow direction axis (ax ay), default: right direction"
     )
     parser.add_argument("--device", default="cpu", type=str)
+    parser.add_argument(
+        "--precompute_forces",
+        action="store_true",
+        help="If set, precompute forces for all frames instead of running full simulation"
+    )
     parser.add_argument("--seed", type=int, default=21)
 
     main(parser.parse_args())

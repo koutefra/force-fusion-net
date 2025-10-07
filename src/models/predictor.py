@@ -1,6 +1,6 @@
 import torch
 import os
-from entities.vector2d import Acceleration, Point2D
+from entities.vector2d import Acceleration, Point2D, ForceDecomposition
 from entities.scene import Scenes, Scene
 from entities.frame import Frame, Frames
 from models.base_model import BaseModel
@@ -64,14 +64,32 @@ class Predictor:
 
         return logs
 
-    def predict(self, frame: Frame) -> dict[int, Acceleration]:
+    def predict(
+        self, frame: Frame, return_decomposition: bool = False
+    ) -> dict[int, Acceleration] | dict[int, tuple[Acceleration, Optional[ForceDecomposition]]]:
         mock_scene = Scene(
-            id='mock', 
-            frames=Frames({frame.number: frame}), 
-            bounding_box=(Point2D.zero, Point2D.zero),
-            fps=float('nan')
+            id="mock",
+            frames=Frames({frame.number: frame}),
+            bounding_box=(Point2D.zero(), Point2D.zero()),
+            fps=float("nan"),
         )
-        dataset = TorchSceneDataset(Scenes({'mock': mock_scene}), pred_steps=0, device=self.device, dtype=self.dtype) 
+        dataset = TorchSceneDataset(Scenes({"mock": mock_scene}), pred_steps=0, device=self.device, dtype=self.dtype)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, collate_fn=dataset.prepare_batch)
-        preds_acc = self.model.predict(loader, as_numpy=True)
-        return {person_id: Acceleration(acc[0], acc[1]) for person_id, acc in preds_acc.items()}
+        preds = self.model.predict(loader, as_numpy=True)
+
+        if not return_decomposition:
+            return {pid: Acceleration(*f["total"]) for pid, f in preds.items()}
+
+        return {
+            pid: (
+                Acceleration(*f["total"]),
+                None
+                if any(v is None for k, v in f.items() if k != "total")
+                else ForceDecomposition(
+                    desired=Acceleration(*f["desired"]),
+                    repulsive_agents=Acceleration(*f["repulsive_agents"]),
+                    repulsive_obs=Acceleration(*f["repulsive_obs"]),
+                ),
+            )
+            for pid, f in preds.items()
+        }
