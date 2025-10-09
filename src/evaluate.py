@@ -36,6 +36,7 @@ def main(args):
     if args.model_type == "gt":
         # Just trim the ground truth to match the time span of predicted sim
         scene = scene.take_first_n_frames(args.simulation_steps)
+        scene = scene.approximate_velocities(args.fdm_win_size, "central")
         scene = scene.approximate_accelerations(args.fdm_win_size, "central")
     else:
         # Load model

@@ -78,18 +78,20 @@ class Predictor:
         preds = self.model.predict(loader, as_numpy=True)
 
         if not return_decomposition:
-            return {pid: Acceleration(*f["total"]) for pid, f in preds.items()}
+            # return {pid: Acceleration(*f["total"]) for pid, f in preds.items()}
+            return {
+                pid: Acceleration(float(f["total"][0]), float(f["total"][1]))
+                for pid, f in preds.items()
+            }
 
         return {
             pid: (
-                Acceleration(*f["total"]),
-                None
-                if any(v is None for k, v in f.items() if k != "total")
-                else ForceDecomposition(
-                    desired=Acceleration(*f["desired"]),
-                    repulsive_agents=Acceleration(*f["repulsive_agents"]),
-                    repulsive_obs=Acceleration(*f["repulsive_obs"]),
-                ),
+                Acceleration(float(f["total"][0]), float(f["total"][1])),
+                None if any(v is None for k, v in f.items() if k != "total") else ForceDecomposition(
+                    desired=Acceleration(*map(float, f["desired"])),
+                    repulsive_agents=Acceleration(*map(float, f["repulsive_agents"])),
+                    repulsive_obs=Acceleration(*map(float, f["repulsive_obs"])),
+                )
             )
             for pid, f in preds.items()
         }
