@@ -20,15 +20,15 @@ def main(args):
     predictor = None
     if args.model_type != "gt":
         predictor = load_model(args.model_folder, args.model_file, args.model_type, args.device)
-        print(f"[INFO] Simulating {args.animation_steps} steps using {args.model_type} ...")
+        print(f"[INFO] Simulating {args.simulation_steps} steps using {args.model_type} ...")
         scene = scene.simulate(
             predict_acc_func=predictor.predict,
-            total_steps=args.animation_steps,
+            total_steps=args.simulation_steps,
             x_threshold=scene.bounding_box[1][0] - args.x_goal_offset,
         )
     else:
-        print(f"[INFO] Using ground truth data (first {args.animation_steps} frames).")
-        scene = scene.take_first_n_frames(args.animation_steps)
+        print(f"[INFO] Using ground truth data (first {args.simulation_steps} frames).")
+        scene = scene.take_first_n_frames(args.simulation_steps)
         scene = scene.approximate_velocities(args.fdm_win_size, "central")
         scene = scene.approximate_accelerations(args.fdm_win_size, "central")
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_file", required=True, type=str)
     parser.add_argument("--model_type", required=True, choices=["fusion_net", "direct_net", "social_force", "social_force_b160", "gt"])
     parser.add_argument("--fdm_win_size", default=20, type=int)
-    parser.add_argument("--animation_steps", default=300, type=int)
+    parser.add_argument("--simulation_steps", default=300, type=int)
     parser.add_argument("--time_scale", default=2.0, type=float)
     parser.add_argument("--x_goal_offset", type=float, default=1.0)
     parser.add_argument("--create_plot_only", action="store_true")

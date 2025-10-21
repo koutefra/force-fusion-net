@@ -1,8 +1,9 @@
 name: force-fusion-net
 channels:
+  - pytorch
+  - nvidia
   - conda-forge
-  - https://repo.anaconda.com/pkgs/main
-  - https://repo.anaconda.com/pkgs/r
+  - defaults
 dependencies:
   - python=3.10
   - pytorch
