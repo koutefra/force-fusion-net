@@ -41,12 +41,8 @@ class Evaluator:
             """Return the maximum error."""
             return self.max_error
 
-    def __init__(self, flow_rect: tuple[float], flow_axis: tuple[float]):
+    def __init__(self):
         self.frame_evaluator = FrameEvaluator() 
-        self.flow_eval = FlowCurveEvaluator(
-            rect=flow_rect,
-            axis=flow_axis
-        )
 
     def evaluate_scene(self, scene: Scene, agent_coll_thr: float = 0.2, obstacle_coll_thr: float = 0.07) -> dict[str, float]:
         return self.frame_evaluator.evaluate_frames(
@@ -132,8 +128,12 @@ class Evaluator:
             "min_dist_min": float(np.min(min_dists)) if min_dists else 0.0,
         }
 
-    def evaluate_flow_curve(self, scene: Scene) -> dict[str, float]:
-        return self.flow_eval.evaluate_flow_curve(scene)
+    def evaluate_flow_curve(self, scene: Scene, flow_rect: tuple[float], flow_axis: tuple[float]) -> dict[str, float]:
+        flow_eval = FlowCurveEvaluator(
+            rect=flow_rect,
+            axis=flow_axis
+        )
+        return flow_eval.evaluate_flow_curve(scene)
 
     def compute_predicted_forces(
         self,
@@ -173,3 +173,30 @@ class Evaluator:
             tag=scene.tag,
         )
 
+    def evaluate_collision_vs_threshold(
+        self,
+        scene: Scene,
+        thresholds: list[float] | np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        """
+        Compute how agent and obstacle collision counts vary with threshold.
+
+        Returns:
+            dict with keys:
+              'thresholds', 'agent_collisions', 'obstacle_collisions'
+        """
+        agent_counts, obstacle_counts = [], []
+        for thr in thresholds:
+            metrics = self.frame_evaluator.evaluate_frames(
+                scene.frames,
+                agent_coll_thr=thr,
+                obstacle_coll_thr=thr,
+            )
+            agent_counts.append(metrics["agent_collisions"])
+            obstacle_counts.append(metrics["obstacle_collisions"])
+
+        return {
+            "thresholds": np.asarray(thresholds, dtype=float),
+            "agent_collisions": np.asarray(agent_counts, dtype=float),
+            "obstacle_collisions": np.asarray(obstacle_counts, dtype=float),
+        }

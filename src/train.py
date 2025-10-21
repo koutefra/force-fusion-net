@@ -11,10 +11,7 @@ from data.julich_caserne_loader import JulichCaserneLoader
 from models.direct_net import DirectNet
 from models.fusion_net import FusionNet
 from models.predictor import Predictor
-from models.social_force import SocialForce
 from evaluation.evaluator import Evaluator
-import yaml
-from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_type", required=True, type=str, help="Type of model to use (e.g., direct_net).")
@@ -25,8 +22,7 @@ parser.add_argument("--hidden_dims", required=False, type=lambda x: list(map(int
                     help="Hidden layer dimensions as a comma-separated list (e.g., 512,512,256).")
 parser.add_argument("--pred_steps", required=True, type=int, default=8, help="Number of prediction steps.")
 parser.add_argument("--dropout", required=False, type=float, default=0.0, help="Dropout rate for the model.")
-parser.add_argument("--dataset", type=str, default="julich", help="Dataset to use (e.g., julich).")
-parser.add_argument("--dataset_path", "--data_folder_path", type=str,
+parser.add_argument("--dataset_folder", type=str,
                     default="./data/datasets/julich_bottleneck_caserne", help="Path to the dataset folder.")
 parser.add_argument("--train_scenes", type=lambda x: x.strip('[]').split(','), 
                     default=['b090', 'b100', 'b110', 'b120', 'b140', 'b180', 'b200', 'b220', 'b250', 'l0', 'l2', 'l4'],
@@ -59,13 +55,10 @@ def main(args: argparse.Namespace) -> None:
         sys.stdout = open(log_file_path, "w")
         sys.stderr = sys.stdout
 
-    if args.dataset == 'julich':
-        train_paths_names = [(os.path.join(args.dataset_path, (name + '.txt')), name) for name in args.train_scenes]
-        val_paths_names = [(os.path.join(args.dataset_path, (name + '.txt')), name) for name in args.val_scenes]
-        train_dataset = SceneDataset.from_loaders([JulichCaserneLoader(train_paths_names)])
-        val_dataset = SceneDataset.from_loaders([JulichCaserneLoader(val_paths_names)])
-    else:
-        raise ValueError('Dataset ' + args.dataset + ' not supported.')
+    train_paths_names = [(os.path.join(args.dataset_folder, (name + '.txt')), name) for name in args.train_scenes]
+    val_paths_names = [(os.path.join(args.dataset_folder, (name + '.txt')), name) for name in args.val_scenes]
+    train_dataset = SceneDataset.from_loaders([JulichCaserneLoader(train_paths_names)])
+    val_dataset = SceneDataset.from_loaders([JulichCaserneLoader(val_paths_names)])
 
     train_dataset = train_dataset.approximate_velocities(args.fdm_win_size, "backward")
     val_dataset = val_dataset.approximate_velocities(args.fdm_win_size, "backward")
@@ -108,18 +101,6 @@ def main(args: argparse.Namespace) -> None:
         epochs=args.epochs,
         metrics=metrics
     )
-
-    # create the animation
-    from evaluation.animation import Animation
-    animation = Animation(output_dir=args.logdir)
-    scene = next(iter(val_dataset.scenes.values()))
-    scene = scene.simulate(predict_acc_func=predictor.predict, total_steps=500, goal_radius=0.4)
-    scene = scene.approximate_velocities(args.fdm_win_size, "central")
-    scene = scene.approximate_accelerations(args.fdm_win_size, "central")
-    animation.create(scene)
-
-    with open(os.path.join(args.logdir, "evaluation.txt"), "w") as file:
-        file.write(str(Evaluator().evaluate_scene(scene)))
 
 if __name__ == "__main__":
     main(parser.parse_args([] if "__file__" not in globals() else None))

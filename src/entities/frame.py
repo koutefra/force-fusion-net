@@ -42,6 +42,13 @@ class Frame:
             if person.position.is_within(person.goal - goal_radius, person.goal + goal_radius)
         ]
 
+    def get_person_ids_ahead_of_x(self, x: float) -> list[int]:
+        return [
+            pid 
+            for pid, person in self.persons.items() 
+            if person.position.x > x
+        ]
+
     def remove_persons(self, person_ids: list[int]) -> "Frame":
         return Frame(
             number=self.number,

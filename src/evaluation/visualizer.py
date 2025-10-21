@@ -6,6 +6,7 @@ from entities.scene import Scene
 from entities.vector2d import Point2D
 from evaluation.align import compute_force_alignment  # assumed available
 from entities.vector2d import closest_point_on_line  # add this import
+import matplotlib.pyplot as plt
 
 
 def _finite_any(arr) -> bool:
@@ -107,18 +108,62 @@ class Visualizer:
     def __init__():
         pass
 
-    def plot_trajectories(scene: Scene, title: Optional[str] = None, output_file_path: Optional[str] = None) -> None:
-        import matplotlib.pyplot as plt
+    @staticmethod
+    def plot_trajectories(
+        scene: Scene,
+        title: Optional[str] = None,
+        output_file_path: Optional[str] = None,
+        show_obstacles: bool = True,
+        show_bounding_box: bool = True,
+    ) -> None:
+        """Plot all pedestrian trajectories with optional obstacles and bounding box."""
         plt.figure(figsize=(10, 10))
-        if title: plt.title(title)
-        plt.grid(True)
-        colors = plt.cm.get_cmap("tab20", len(scene.frames[list(scene.frames.keys())[0]].persons))
+        ax = plt.gca()
+        if title:
+            plt.title(title)
+
+        # --- Grid & aesthetics ---
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_aspect("equal", adjustable="box")
+
+        # --- Plot trajectories ---
+        first_frame = next(iter(scene.frames.values()))
+        persons = first_frame.persons
+        colors = plt.cm.get_cmap("tab20", len(persons))
+
         for i, (pid, traj) in enumerate(scene.frames.to_trajectories().items()):
             xs = [p.position.x for p in traj.records.values()]
             ys = [p.position.y for p in traj.records.values()]
-            plt.plot(xs, ys, label=f"Person {pid}", color=colors(i))
-        plt.xticks([]); plt.yticks([]); plt.tight_layout()
-        if output_file_path: plt.savefig(output_file_path)
+            ax.plot(xs, ys, lw=1.8, color=colors(i), label=f"Person {pid}")
+
+        # --- Plot obstacles ---
+        if show_obstacles:
+            for frame in scene.frames.values():
+                if not hasattr(frame, "obstacles") or not frame.obstacles:
+                    continue
+                for obs in frame.obstacles:
+                    xs = [obs.p1.x, obs.p2.x]
+                    ys = [obs.p1.y, obs.p2.y]
+                    ax.plot(xs, ys, color="black", lw=2.0, alpha=0.8)
+                break  # obstacles are static → draw once
+
+        # --- Bounding box ---
+        if show_bounding_box and hasattr(scene, "bounding_box"):
+            (p_min, p_max) = scene.bounding_box
+            rect_x = [p_min.x, p_max.x, p_max.x, p_min.x, p_min.x]
+            rect_y = [p_min.y, p_min.y, p_max.y, p_max.y, p_min.y]
+            ax.plot(rect_x, rect_y, "k--", lw=1.2, label="Bounding box")
+
+        # --- Layout & output ---
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.invert_yaxis()
+
+        plt.tight_layout()
+
+        if output_file_path:
+            plt.savefig(output_file_path, dpi=300)
+            print(f"[INFO] Trajectories saved to {output_file_path}")
+
         plt.show()
 
     # ================== NEW 2×5 comparison figure ==================
@@ -196,8 +241,6 @@ class Visualizer:
             if xs:
                 ax.plot(xs, ys, "-", lw=2.0, color=colors[name], label=name)
                 ax.plot(xs[0], ys[0], "o", ms=5, color=colors[name])
-        if ax.get_legend_handles_labels()[0]:
-            ax.legend(loc="best", fontsize=9)
 
         # ========== (2,1) Closest distances (agents & obstacles) ==========
         ax = axs[1, 0]
@@ -339,3 +382,45 @@ class Visualizer:
                 dpi=dpi,
                 figsize=figsize,
             )
+
+    @staticmethod
+    def plot_collision_vs_threshold_multi(
+        data_dict: dict[str, dict[str, np.ndarray]],
+        key: str,
+        title: str | None = None,
+        out_path: str | None = None,
+        dpi: int = 220,
+    ) -> None:
+        """
+        Plot multi-model comparison for collision-vs-threshold curves.
+
+        Args:
+            data_dict: mapping model_name → result dict from Evaluator.evaluate_collision_vs_threshold()
+            key: 'agent_collisions' or 'obstacle_collisions'
+            title: figure title
+            out_path: optional save path
+        """
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(8, 5), dpi=dpi)
+        palette = ["#1976d2", "#e53935", "#43a047", "#8e24aa", "#fb8c00", "#00897b", "#7b1fa2", "#5d4037"]
+
+        for i, (name, data) in enumerate(data_dict.items()):
+            thresholds = data["thresholds"]
+            values = data[key]
+            plt.plot(thresholds, values, "o-", lw=2.0, color=palette[i % len(palette)], label=name)
+
+        plt.xlabel("Collision threshold [m]")
+        plt.ylabel("Total collisions")
+        plt.title(title or f"{key.replace('_', ' ').title()}")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+
+        if out_path:
+            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(out_path, bbox_inches="tight", dpi=dpi)
+            plt.close()
+            print(f"[Visualizer] saved {key} plot → {out_path}")
+        else:
+            plt.show()

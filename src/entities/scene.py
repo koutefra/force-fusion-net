@@ -69,15 +69,17 @@ class Scene:
         self,
         predict_acc_func: Callable[[Frame], dict[int, Acceleration]],
         total_steps: int,
-        goal_radius: float,
-        person_ids: Optional[list[int]] = None
+        x_threshold: float,
+        prohibited_pids: Optional[list[int]] = None
     ) -> "Scene":
         frame_numbers = list(self.frames.keys())
         first_f_num, first_frame = frame_numbers[0], self.frames[frame_numbers[0]]
         last_f_num = first_f_num + total_steps * self.frame_step
-        resulting_frames = [first_frame.remove_persons(person_ids) if person_ids else first_frame]
+        resulting_frames = [first_frame.remove_persons(prohibited_pids) if prohibited_pids else first_frame]
         delta_time = self.frame_step / self.fps
-        finished_person_ids = set(person_ids or [])
+        finished_person_ids = set(prohibited_pids or [])
+        all_pids = set([pid for frame in self.frames.values() for pid in frame.persons.keys()])
+
         for cur_f_num in tqdm(range(first_f_num, last_f_num + 1, self.frame_step), desc="Calculating the simulation..."):
             frame = resulting_frames[-1]
             acc_pred = predict_acc_func(frame)
@@ -85,7 +87,7 @@ class Scene:
             resulting_frames[-1] = frame  # resave the currect frame enriched with the accelerations
 
             next_frame = frame.apply_kinematic_equation(delta_time, self.frame_step)
-            finished_person_ids.update(next_frame.get_person_ids_at_goal(goal_radius))
+            finished_person_ids.update(next_frame.get_person_ids_ahead_of_x(x_threshold))
             finished_person_ids.update(next_frame.get_person_ids_outside(self.bounding_box))
 
             # add new persons from the original scene if available
@@ -96,6 +98,8 @@ class Scene:
             # add next frame for further
             if cur_f_num != last_f_num:
                 resulting_frames.append(next_frame)
+
+            if finished_person_ids == all_pids: break
 
         return Scene(
             id=self.id,

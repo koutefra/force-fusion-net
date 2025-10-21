@@ -7,8 +7,7 @@ __pycache__/
 *.DS_Store
 /logs/
 *.gif
-*.pth
-/animations
-/data/
+data/**/*.txt
 *.out
 *.log
+data/forces/

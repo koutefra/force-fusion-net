@@ -75,19 +75,31 @@ class FrameEvaluator:
         obstacle_collisions = 0
         center_of_mass_x_sum, center_of_mass_y_sum = 0.0, 0.0
         velocity_magnitudes = []
+
         for frame in frames.values():
-            agent_collisions += self.count_agent_collisions(frame, agent_coll_thr)
-            obstacle_collisions += self.count_obstacle_collisions(frame, obstacle_coll_thr)
+            ac = self.count_agent_collisions(frame, agent_coll_thr)
+            oc = self.count_obstacle_collisions(frame, obstacle_coll_thr)
+
+            agent_collisions += ac
+            obstacle_collisions += oc
+
             center_of_mass = self.center_of_mass(frame)
             center_of_mass_x_sum += center_of_mass.x
             center_of_mass_y_sum += center_of_mass.y
-            velocity_magnitudes.extend([p.velocity.magnitude() for p in frame.persons.values() if p.velocity])
+
+            velocity_magnitudes.extend([
+                p.velocity.magnitude() for p in frame.persons.values() if p.velocity
+            ])
+
         velocity_magnitudes = np.array(velocity_magnitudes) if velocity_magnitudes else np.array([0.0])
+        total_frames = len(frames)
+
         return {
             "agent_collisions": agent_collisions,
             "obstacle_collisions": obstacle_collisions,
-            "center_of_mass_x_avg": center_of_mass_x_sum / len(frames),
-            "center_of_mass_y_avg": center_of_mass_y_sum / len(frames),
+            "total_frames": total_frames,
+            "center_of_mass_x_avg": center_of_mass_x_sum / total_frames,
+            "center_of_mass_y_avg": center_of_mass_y_sum / total_frames,
             "velocity_avg": np.mean(velocity_magnitudes),
             "velocity_max": np.max(velocity_magnitudes),
             "velocity_std": np.std(velocity_magnitudes),
