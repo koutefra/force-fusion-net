@@ -1,0 +1,20 @@
+name: force-fusion-net
+channels:
+  - conda-forge
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - python=3.10
+  - pytorch
+  - pytorch-cuda=12.1
+  - torchaudio
+  - torchvision
+  - torchmetrics
+  - numpy
+  - matplotlib
+  - pandas
+  - imageio
+  - tqdm
+  - pip
+  - pip:
+      - opencv-python
