@@ -1,31 +1,35 @@
-# 🧠 ForceFusionNet
+# 🧠 PedForceNet
 
 > **Official implementation of the paper**  
 > **“Deep Learning Approach to Force-Based Modeling of Pedestrian Flow in Bottleneck Scenarios”**  
-> *František Dušek, Pavel Hrabák, Daniel Vašata*  
+> *František Dušek, Daniel Vašata, Pavel Hrabák*  
 > Faculty of Information Technology, Czech Technical University in Prague, 2025
 
 ---
 
 <p align="center">
-  <img src="demo.gif" width="85%" alt="ForceFusionNet simulation on b160 bottleneck">
+  <img src="demo.gif" width="85%" alt="FusionForceNet simulation on b160 bottleneck">
 </p>
 
 <p align="center">
-  <em>ForceFusionNet simulation of pedestrian flow through a 1.6 m bottleneck (b160 scene).</em>
+  <em>FusionForceNet simulation of pedestrian flow through a 1.6 m bottleneck (b160 scene).</em>
 </p>
 
 ---
 
 ### 🧩 Overview
-**ForceFusionNet** is a hybrid force-based model for simulating pedestrian flow through bottlenecks.  
-It integrates **Graph Neural Network–inspired aggregation** into the classical **Social Force Model (SFM)**,  
+**PedForceNet** is a hybrid force-based framework for simulating pedestrian flow through bottlenecks.  
+It integrates deep neural force prediction into the classical **Social Force Model (SFM)**,  
 learning goal-directed, interaction, and obstacle forces directly from real-world trajectory data.
 
-Compared to purely knowledge-based or deep models, ForceFusionNet achieves:
-- 💡 *Interpretability* — each force module corresponds to a physical component  
+Two model variants are included:
+- **DirectForceNet (DFN):** learns the total force directly as a unified mapping.  
+- **FusionForceNet (FFN):** learns the goal-directed, interaction, and obstacle forces as separate components, offering improved interpretability.
+
+Compared to purely knowledge-based or purely deep learning approaches, these models achieve:
 - ⚙️ *Physical realism* — dynamics governed by second-order equations of motion  
-- 🚶‍♂️ *Predictive power* — accurately reproduces unseen bottleneck scenes
+- 🚶‍♂️ *Predictive power* — accurate reproduction of unseen bottleneck scenarios  
+- 💡 *Interpretability* *(FFN only)* — each learned force retains a physical meaning
 
 ---
 
@@ -33,8 +37,8 @@ Compared to purely knowledge-based or deep models, ForceFusionNet achieves:
 
 ### 1️⃣ Clone the repository
 ```bash
-git clone https://github.com/koutefra/force-fusion-net.git
-cd force-fusion-net
+git clone https://github.com/koutefra/ped-force-net.git
+cd ped-force-net
 ```
 
 ---
@@ -42,7 +46,7 @@ cd force-fusion-net
 ### 2️⃣ Create and activate the environment
 ```bash
 conda env create -f environment.yml
-conda activate force-fusion-net
+conda activate ped-force-net
 ```
 
 ---
@@ -112,8 +116,8 @@ for all bottleneck scenes. It’s **not required** for running or reproducing th
 If you want to **clone the repository faster**, you can skip these large files using Git’s sparse checkout:
 
 ```bash
-git clone --filter=blob:none --sparse https://github.com/koutefra/force-fusion-net.git
-cd force-fusion-net
+git clone --filter=blob:none --sparse https://github.com/koutefra/ped-force-net.git
+cd ped-force-net
 git sparse-checkout set --no-cone data src environment.yml
 ```
 
@@ -127,7 +131,7 @@ git sparse-checkout set results
 
 ## 🧰 Repository Structure
 ```
-force-fusion-net/
+ped-force-net/
 ├── data/
 │   ├── datasets/
 │   │   └── download.sh
