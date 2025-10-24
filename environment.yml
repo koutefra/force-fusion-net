@@ -1,4 +1,4 @@
-name: force-fusion-net
+name: ped-force-net
 channels:
   - pytorch
   - nvidia
